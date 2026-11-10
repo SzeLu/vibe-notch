@@ -42,3 +42,6 @@ releases/
 # Xcode backup
 *.xcodeproj.backup/
 CLAUDE.md
+
+# WorkBuddy local project data (memory, caches, etc.) — not source
+.workbuddy-ai/
