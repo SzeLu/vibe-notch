@@ -95,19 +95,19 @@ struct ShellView: View {
         HStack(spacing: 6) {
             Image(systemName: "terminal")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(.primary.opacity(0.5))
 
             Text("Shell")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white.opacity(0.85))
+                .foregroundColor(.primary.opacity(0.85))
 
             if let filterTitle {
                 Text("·")
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.3))
+                    .foregroundColor(.primary.opacity(0.3))
                 Text(filterTitle)
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.45))
+                    .foregroundColor(.primary.opacity(0.45))
                     .lineLimit(1)
             }
 
@@ -125,10 +125,10 @@ struct ShellView: View {
                 } label: {
                     Text("All")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(.primary.opacity(0.6))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.1))
+                        .background(Color.primary.opacity(0.1))
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -136,7 +136,7 @@ struct ShellView: View {
 
             Text("\(allCommands.count)")
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.35))
+                .foregroundColor(.primary.opacity(0.35))
         }
         .padding(.horizontal, 8)
         .padding(.top, 2)
@@ -146,10 +146,10 @@ struct ShellView: View {
         VStack(spacing: 6) {
             Text("No shell commands yet")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(.primary.opacity(0.4))
             Text("Commands agents run will appear here")
                 .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.25))
+                .foregroundColor(.primary.opacity(0.25))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -170,7 +170,7 @@ struct ShellCommandRow: View {
         case .running: return TerminalColors.amber
         case .success: return TerminalColors.green
         case .error: return TerminalColors.red
-        case .interrupted: return .white.opacity(0.4)
+        case .interrupted: return .primary.opacity(0.4)
         }
     }
 
@@ -197,7 +197,7 @@ struct ShellCommandRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(record.commandPreview)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.85))
+                        .foregroundColor(.primary.opacity(0.85))
                         .lineLimit(isExpanded ? nil : 2)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -205,7 +205,7 @@ struct ShellCommandRow: View {
                         if !sessionTitle.isEmpty {
                             Text(sessionTitle)
                                 .font(.system(size: 10))
-                                .foregroundColor(.white.opacity(0.35))
+                                .foregroundColor(.primary.opacity(0.35))
                                 .lineLimit(1)
                         }
 
@@ -213,7 +213,7 @@ struct ShellCommandRow: View {
 
                         Text(RelativeTimeFormatter.since(record.finishedAt ?? record.startedAt))
                             .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.3))
+                            .foregroundColor(.primary.opacity(0.3))
                     }
                 }
             }
@@ -221,7 +221,7 @@ struct ShellCommandRow: View {
             if isExpanded, let output = record.output, !output.isEmpty {
                 Text(output)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.primary.opacity(0.5))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
                     .padding(.top, 2)
@@ -232,7 +232,7 @@ struct ShellCommandRow: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
+                .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
         )
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }

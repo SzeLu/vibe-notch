@@ -60,7 +60,7 @@ struct AgentIcon: View {
             .clipShape(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
             )
     }
 

@@ -74,19 +74,19 @@ struct MonitorView: View {
         HStack(spacing: 6) {
             Image(systemName: "timer")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(.primary.opacity(0.5))
 
             Text("Monitor")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white.opacity(0.85))
+                .foregroundColor(.primary.opacity(0.85))
 
             if let filterTitle {
                 Text("·")
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.3))
+                    .foregroundColor(.primary.opacity(0.3))
                 Text(filterTitle)
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.45))
+                    .foregroundColor(.primary.opacity(0.45))
                     .lineLimit(1)
             }
 
@@ -104,10 +104,10 @@ struct MonitorView: View {
                 } label: {
                     Text("All")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(.primary.opacity(0.6))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.1))
+                        .background(Color.primary.opacity(0.1))
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -115,7 +115,7 @@ struct MonitorView: View {
 
             Text("\(allTasks.count)")
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.35))
+                .foregroundColor(.primary.opacity(0.35))
         }
         .padding(.horizontal, 8)
         .padding(.top, 2)
@@ -125,10 +125,10 @@ struct MonitorView: View {
         VStack(spacing: 6) {
             Text("No background tasks")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(.primary.opacity(0.4))
             Text("Detached tasks agents spawn will appear here")
                 .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.25))
+                .foregroundColor(.primary.opacity(0.25))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -184,19 +184,19 @@ struct BackgroundTaskRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(record.label.isEmpty ? "Background task" : record.label)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.85))
+                        .foregroundColor(.primary.opacity(0.85))
                         .lineLimit(isExpanded ? nil : 2)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     HStack(spacing: 6) {
-                        Text(statusText)
+                        Text(L(statusText))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(statusColor)
 
                         if !sessionTitle.isEmpty {
                             Text(sessionTitle)
                                 .font(.system(size: 10))
-                                .foregroundColor(.white.opacity(0.35))
+                                .foregroundColor(.primary.opacity(0.35))
                                 .lineLimit(1)
                         }
 
@@ -204,7 +204,7 @@ struct BackgroundTaskRow: View {
 
                         Text(RelativeTimeFormatter.duration(from: record.startedAt, to: record.finishedAt))
                             .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.3))
+                            .foregroundColor(.primary.opacity(0.3))
                     }
                 }
             }
@@ -212,7 +212,7 @@ struct BackgroundTaskRow: View {
             if isExpanded, let output = record.output, !output.isEmpty {
                 Text(output)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.primary.opacity(0.5))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
                     .padding(.top, 2)
@@ -223,7 +223,7 @@ struct BackgroundTaskRow: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
+                .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
         )
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }

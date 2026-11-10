@@ -40,19 +40,19 @@ struct ClaudeDirPickerRow: View {
 
                     Text(displayValue)
                         .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.primary.opacity(0.4))
                         .lineLimit(1)
                         .truncationMode(.middle)
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.primary.opacity(0.4))
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
+                        .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
                 )
             }
             .buttonStyle(.plain)
@@ -62,7 +62,7 @@ struct ClaudeDirPickerRow: View {
             if isExpanded {
                 VStack(spacing: 2) {
                     ClaudeDirOptionRow(
-                        label: "Auto-detect",
+                        label: L("Auto-detect"),
                         sublabel: isCustom ? nil : resolvedAutoDetectPath,
                         isSelected: !isCustom
                     ) {
@@ -70,7 +70,7 @@ struct ClaudeDirPickerRow: View {
                     }
 
                     ClaudeDirOptionRow(
-                        label: "Choose folder…",
+                        label: L("Choose folder…"),
                         sublabel: isCustom ? displayValue : nil,
                         isSelected: isCustom
                     ) {
@@ -87,7 +87,7 @@ struct ClaudeDirPickerRow: View {
     // MARK: - Presentation
 
     private var textColor: Color {
-        .white.opacity(isHovered ? 1.0 : 0.7)
+        .primary.opacity(isHovered ? 1.0 : 0.7)
     }
 
     private var isCustom: Bool {
@@ -96,7 +96,7 @@ struct ClaudeDirPickerRow: View {
 
     /// Short display string for the main row's right side.
     private var displayValue: String {
-        isCustom ? shortenedPath(currentValue) : "Auto-detect"
+        isCustom ? shortenedPath(currentValue) : L("Auto-detect")
     }
 
     /// What `Auto-detect` actually resolves to right now (for the sublabel).
@@ -118,8 +118,8 @@ struct ClaudeDirPickerRow: View {
 
     private func openFolderPicker() {
         let panel = NSOpenPanel()
-        panel.title = "Choose Claude Config Directory"
-        panel.message = "Select the folder Claude Code uses (typically ~/.claude or ~/.config/claude)."
+        panel.title = L("Choose Claude Config Directory")
+        panel.message = L("Select the folder Claude Code uses (typically ~/.claude or ~/.config/claude).")
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
@@ -168,17 +168,17 @@ private struct ClaudeDirOptionRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Circle()
-                    .fill(isSelected ? TerminalColors.green : Color.white.opacity(0.2))
+                    .fill(isSelected ? TerminalColors.green : Color.primary.opacity(0.2))
                     .frame(width: 6, height: 6)
 
                 Text(label)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(isHovered ? 1.0 : 0.7))
+                    .foregroundColor(.primary.opacity(isHovered ? 1.0 : 0.7))
 
                 if let sublabel {
                     Text(sublabel)
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.35))
+                        .foregroundColor(.primary.opacity(0.35))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -195,7 +195,7 @@ private struct ClaudeDirOptionRow: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
+                    .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
             )
         }
         .buttonStyle(.plain)

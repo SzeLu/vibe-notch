@@ -26,11 +26,11 @@ struct ClaudeInstancesView: View {
         VStack(spacing: 8) {
             Text("No sessions")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(.primary.opacity(0.4))
 
             Text("Start a session in any supported agent")
                 .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.25))
+                .foregroundColor(.primary.opacity(0.25))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -229,14 +229,14 @@ struct InstanceRow: View {
                 HStack(spacing: 6) {
                     Text(session.displayTitle)
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                         .lineLimit(1)
 
                     // Token usage indicator
                     if session.usage.totalTokens > 0 {
                         Text(session.usage.formattedTotal)
                             .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.3))
+                            .foregroundColor(.primary.opacity(0.3))
                     }
                 }
 
@@ -250,12 +250,12 @@ struct InstanceRow: View {
                         if isInteractiveTool {
                             Text("Needs your input")
                                 .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.5))
+                                .foregroundColor(.primary.opacity(0.5))
                                 .lineLimit(1)
                         } else if let input = session.pendingToolInput {
                             Text(input)
                                 .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.5))
+                                .foregroundColor(.primary.opacity(0.5))
                                 .lineLimit(1)
                         }
                     }
@@ -267,12 +267,12 @@ struct InstanceRow: View {
                             if let toolName = session.lastToolName {
                                 Text(MCPToolFormatter.formatToolName(toolName))
                                     .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.5))
+                                    .foregroundColor(.primary.opacity(0.5))
                             }
                             if let input = session.lastMessage {
                                 Text(input)
                                     .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.4))
+                                    .foregroundColor(.primary.opacity(0.4))
                                     .lineLimit(1)
                             }
                         }
@@ -281,11 +281,11 @@ struct InstanceRow: View {
                         HStack(spacing: 4) {
                             Text("You:")
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.white.opacity(0.5))
+                                .foregroundColor(.primary.opacity(0.5))
                             if let msg = session.lastMessage {
                                 Text(msg)
                                     .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.4))
+                                    .foregroundColor(.primary.opacity(0.4))
                                     .lineLimit(1)
                             }
                         }
@@ -294,20 +294,20 @@ struct InstanceRow: View {
                         if let msg = session.lastMessage {
                             Text(msg)
                                 .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.4))
+                                .foregroundColor(.primary.opacity(0.4))
                                 .lineLimit(1)
                         }
                     }
                 } else if let lastMsg = session.lastMessage {
                     Text(lastMsg)
                         .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.primary.opacity(0.4))
                         .lineLimit(1)
                 } else {
                     // Fallback: show phase-based status when no other content
-                    Text(phaseStatusText)
+                    Text(L(phaseStatusText))
                         .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.primary.opacity(0.4))
                         .lineLimit(1)
                 }
 
@@ -316,11 +316,11 @@ struct InstanceRow: View {
                     HStack(spacing: 5) {
                         Image(systemName: "folder")
                             .font(.system(size: 9))
-                            .foregroundColor(.white.opacity(0.3))
+                            .foregroundColor(.primary.opacity(0.3))
 
                         Text(folderLabel)
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.4))
+                            .foregroundColor(.primary.opacity(0.4))
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .layoutPriority(1)
@@ -328,12 +328,12 @@ struct InstanceRow: View {
                         if let branch = gitRepo?.displayBranch, !branch.isEmpty {
                             Image(systemName: "arrow.triangle.branch")
                                 .font(.system(size: 9))
-                                .foregroundColor(.white.opacity(0.3))
+                                .foregroundColor(.primary.opacity(0.3))
                                 .padding(.leading, 2)
 
                             Text(branch)
                                 .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.45))
+                                .foregroundColor(.primary.opacity(0.45))
                                 .lineLimit(1)
                                 .layoutPriority(2)
                         }
@@ -419,7 +419,7 @@ struct InstanceRow: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isWaitingForApproval)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
+                .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
         )
         .onHover { isHovered = $0 }
         .task {
@@ -457,7 +457,7 @@ struct InstanceRow: View {
                 .frame(width: 6, height: 6)
         case .idle, .ended:
             Circle()
-                .fill(Color.white.opacity(0.2))
+                .fill(Color.primary.opacity(0.2))
                 .frame(width: 6, height: 6)
         }
     }
@@ -490,10 +490,10 @@ struct InlineApprovalButtons: View {
             } label: {
                 Text("Deny")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(.primary.opacity(0.6))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Color.white.opacity(0.1))
+                    .background(Color.primary.opacity(0.1))
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -505,10 +505,10 @@ struct InlineApprovalButtons: View {
             } label: {
                 Text("Allow")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.black)
+                    .foregroundColor(Theme.panel)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Color.white.opacity(0.9))
+                    .background(Color.primary.opacity(0.9))
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -543,11 +543,11 @@ struct IconButton: View {
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(isHovered ? .white.opacity(0.8) : .white.opacity(0.4))
+                .foregroundColor(isHovered ? .primary.opacity(0.8) : .primary.opacity(0.4))
                 .frame(width: 24, height: 24)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isHovered ? Color.white.opacity(0.1) : Color.clear)
+                        .fill(isHovered ? Color.primary.opacity(0.1) : Color.clear)
                 )
         }
         .buttonStyle(.plain)
@@ -573,10 +573,10 @@ struct CompactTerminalButton: View {
                 Text("Go to Terminal")
                     .font(.system(size: 10, weight: .medium))
             }
-            .foregroundColor(isEnabled ? .white.opacity(0.9) : .white.opacity(0.3))
+            .foregroundColor(isEnabled ? .primary.opacity(0.9) : .primary.opacity(0.3))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(isEnabled ? Color.white.opacity(0.15) : Color.white.opacity(0.05))
+            .background(isEnabled ? Color.primary.opacity(0.15) : Color.primary.opacity(0.05))
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -601,10 +601,10 @@ struct TerminalButton: View {
                 Text("Terminal")
                     .font(.system(size: 11, weight: .medium))
             }
-            .foregroundColor(isEnabled ? .black : .white.opacity(0.4))
+            .foregroundColor(isEnabled ? Theme.panel : .primary.opacity(0.4))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(isEnabled ? Color.white.opacity(0.95) : Color.white.opacity(0.1))
+            .background(isEnabled ? Color.primary.opacity(0.95) : Color.primary.opacity(0.1))
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)

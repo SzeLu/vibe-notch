@@ -151,16 +151,16 @@ struct NotchView: View {
                             : cornerRadiusInsets.closed.bottom
                     )
                     .padding([.horizontal, .bottom], viewModel.status == .opened ? 12 : 0)
-                    .background(.black)
+                    .background(Theme.panel)
                     .clipShape(currentNotchShape)
                     .overlay(alignment: .top) {
                         Rectangle()
-                            .fill(.black)
+                            .fill(Theme.panel)
                             .frame(height: 1)
                             .padding(.horizontal, topCornerRadius)
                     }
                     .shadow(
-                        color: (viewModel.status == .opened || isHovering) ? .black.opacity(0.7) : .clear,
+                        color: (viewModel.status == .opened || isHovering) ? Theme.shadow : .clear,
                         radius: 6
                     )
                     .frame(
@@ -189,7 +189,6 @@ struct NotchView: View {
         }
         .opacity(isVisible ? 1 : 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .preferredColorScheme(.dark)
         .onAppear {
             sessionMonitor.startMonitoring()
             // On non-notched devices, keep visible so users have a target to interact with
@@ -278,9 +277,9 @@ struct NotchView: View {
                     .fill(.clear)
                     .frame(width: closedNotchSize.width - 20)
             } else {
-                // Closed with activity: black spacer (with optional bounce)
+                // Closed with activity: panel-colored spacer (with optional bounce)
                 Rectangle()
-                    .fill(.black)
+                    .fill(Theme.panel)
                     .frame(width: closedNotchSize.width - cornerRadiusInsets.closed.top + (isBouncing ? 16 : 0))
             }
 
@@ -340,7 +339,7 @@ struct NotchView: View {
             } label: {
                 Image(systemName: viewModel.contentType == .shell ? "chevron.left" : "terminal")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(viewModel.contentType == .shell ? .white.opacity(0.7) : .white.opacity(0.4))
+                    .foregroundColor(viewModel.contentType == .shell ? .primary.opacity(0.7) : .primary.opacity(0.4))
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
             }
@@ -355,7 +354,7 @@ struct NotchView: View {
             } label: {
                 Image(systemName: viewModel.contentType == .monitor ? "chevron.left" : "timer")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(viewModel.contentType == .monitor ? .white.opacity(0.7) : .white.opacity(0.4))
+                    .foregroundColor(viewModel.contentType == .monitor ? .primary.opacity(0.7) : .primary.opacity(0.4))
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
             }
@@ -374,7 +373,7 @@ struct NotchView: View {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: viewModel.contentType == .menu ? "xmark" : "line.3.horizontal")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.primary.opacity(0.4))
                         .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
 

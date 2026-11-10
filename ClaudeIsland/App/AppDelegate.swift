@@ -28,10 +28,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         super.init()
         AppDelegate.shared = self
 
-        do {
-            try updater.start()
-        } catch {
-            print("Failed to start Sparkle updater: \(error)")
+        if FeatureFlags.updatesEnabled {
+            do {
+                try updater.start()
+            } catch {
+                print("Failed to start Sparkle updater: \(error)")
+            }
         }
     }
 
@@ -78,13 +80,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.handleScreenChange()
         }
 
-        if updater.canCheckForUpdates {
-            updater.checkForUpdates()
-        }
+        if FeatureFlags.updatesEnabled {
+            if updater.canCheckForUpdates {
+                updater.checkForUpdates()
+            }
 
-        updateCheckTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
-            guard let updater = self?.updater, updater.canCheckForUpdates else { return }
-            updater.checkForUpdates()
+            updateCheckTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+                guard let updater = self?.updater, updater.canCheckForUpdates else { return }
+                updater.checkForUpdates()
+            }
         }
     }
 

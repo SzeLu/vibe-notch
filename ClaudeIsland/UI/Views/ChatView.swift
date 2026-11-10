@@ -188,12 +188,12 @@ struct ChatView: View {
             HStack(spacing: 8) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(isHeaderHovered ? 1.0 : 0.6))
+                    .foregroundColor(.primary.opacity(isHeaderHovered ? 1.0 : 0.6))
                     .frame(width: 24, height: 24)
 
                 Text(session.displayTitle)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(isHeaderHovered ? 1.0 : 0.85))
+                    .foregroundColor(.primary.opacity(isHeaderHovered ? 1.0 : 0.85))
                     .lineLimit(1)
 
                 Spacer()
@@ -202,14 +202,14 @@ struct ChatView: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isHeaderHovered ? Color.white.opacity(0.08) : Color.clear)
+                    .fill(isHeaderHovered ? Color.primary.opacity(0.08) : Color.clear)
             )
         }
         .buttonStyle(.plain)
         .onHover { isHeaderHovered = $0 }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.black.opacity(0.2))
+        .background(Theme.surface)
         .overlay(alignment: .bottom) {
             LinearGradient(
                 colors: [fadeColor.opacity(0.7), fadeColor.opacity(0)],
@@ -243,11 +243,11 @@ struct ChatView: View {
     private var loadingState: some View {
         VStack(spacing: 8) {
             ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: .white.opacity(0.4)))
+                .progressViewStyle(CircularProgressViewStyle(tint: .primary.opacity(0.4)))
                 .scaleEffect(0.8)
             Text("Loading messages...")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(.primary.opacity(0.4))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -258,10 +258,10 @@ struct ChatView: View {
         VStack(spacing: 8) {
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 24))
-                .foregroundColor(.white.opacity(0.2))
+                .foregroundColor(.primary.opacity(0.2))
             Text("No messages yet")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(.primary.opacity(0.4))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -363,17 +363,17 @@ struct ChatView: View {
             TextField(canSendMessages ? "Message Claude..." : "Open Claude Code in tmux to enable messaging", text: $inputText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
-                .foregroundColor(canSendMessages ? .white : .white.opacity(0.4))
+                .foregroundColor(canSendMessages ? .primary : .primary.opacity(0.4))
                 .focused($isInputFocused)
                 .disabled(!canSendMessages)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.white.opacity(canSendMessages ? 0.08 : 0.04))
+                        .fill(Color.primary.opacity(canSendMessages ? 0.08 : 0.04))
                         .overlay(
                             RoundedRectangle(cornerRadius: 20)
-                                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
                         )
                 )
                 .onSubmit {
@@ -385,14 +385,14 @@ struct ChatView: View {
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 28))
-                    .foregroundColor(!canSendMessages || inputText.isEmpty ? .white.opacity(0.2) : .white.opacity(0.9))
+                    .foregroundColor(!canSendMessages || inputText.isEmpty ? .primary.opacity(0.2) : .primary.opacity(0.9))
             }
             .buttonStyle(.plain)
             .disabled(!canSendMessages || inputText.isEmpty)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color.black.opacity(0.2))
+        .background(Theme.surface)
         .overlay(alignment: .top) {
             LinearGradient(
                 colors: [fadeColor.opacity(0), fadeColor.opacity(0.7)],
@@ -463,7 +463,7 @@ struct ChatView: View {
     }
 
     private func sendMessage() {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = inputText.trimmingCharacters(in: .primaryspacesAndNewlines)
         guard !text.isEmpty else { return }
 
         inputText = ""
@@ -564,7 +564,7 @@ struct ImageMessageView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                     )
             } else {
                 // Decode failed — show a labelled placeholder rather than silently dropping
@@ -574,12 +574,12 @@ struct ImageMessageView: View {
                     Text("Image (\(image.mediaType))")
                         .font(.system(size: 12))
                 }
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(.primary.opacity(0.5))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.08))
+                        .fill(Color.primary.opacity(0.08))
                 )
             }
         }
@@ -604,12 +604,12 @@ struct UserMessageView: View {
         HStack {
             Spacer(minLength: 60)
 
-            MarkdownText(text, color: .white, fontSize: 13)
+            MarkdownText(text, color: .primary, fontSize: 13)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 18)
-                        .fill(Color.white.opacity(0.15))
+                        .fill(Color.primary.opacity(0.15))
                 )
         }
     }
@@ -623,17 +623,17 @@ struct AssistantMessageView: View {
     var body: some View {
         // Skip rendering when text is empty — otherwise the dot indicator
         // shows up alone (orphan dot) for tool-only assistant turns.
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if text.trimmingCharacters(in: .primaryspacesAndNewlines).isEmpty {
             EmptyView()
         } else {
             HStack(alignment: .top, spacing: 6) {
                 // White dot indicator
                 Circle()
-                    .fill(Color.white.opacity(0.6))
+                    .fill(Color.primary.opacity(0.6))
                     .frame(width: 6, height: 6)
                     .padding(.top, 5)
 
-                MarkdownText(text, color: .white.opacity(0.9), fontSize: 13)
+                MarkdownText(text, color: .primary.opacity(0.9), fontSize: 13)
 
                 Spacer(minLength: 60)
             }
@@ -692,7 +692,7 @@ struct ToolCallView: View {
     private var statusColor: Color {
         switch tool.status {
         case .running:
-            return Color.white
+            return Color.primary
         case .waitingForApproval:
             return Color.orange
         case .success:
@@ -705,11 +705,11 @@ struct ToolCallView: View {
     private var textColor: Color {
         switch tool.status {
         case .running:
-            return .white.opacity(0.6)
+            return .primary.opacity(0.6)
         case .waitingForApproval:
             return Color.orange.opacity(0.9)
         case .success:
-            return .white.opacity(0.7)
+            return .primary.opacity(0.7)
         case .error, .interrupted:
             return Color.red.opacity(0.8)
         }
@@ -790,7 +790,7 @@ struct ToolCallView: View {
                 if canExpand && tool.status != .running && tool.status != .waitingForApproval {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.white.opacity(0.3))
+                        .foregroundColor(.primary.opacity(0.3))
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                         .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isExpanded)
                 }
@@ -822,7 +822,7 @@ struct ToolCallView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(canExpand && isHovering ? Color.white.opacity(0.05) : Color.clear)
+                .fill(canExpand && isHovering ? Color.primary.opacity(0.05) : Color.clear)
         )
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -871,7 +871,7 @@ struct SubagentToolsList: View {
             if hiddenCount > 0 {
                 Text("+\(hiddenCount) more tool uses")
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.primary.opacity(0.4))
             }
 
             // Show last 2 tools (most recent activity)
@@ -927,12 +927,12 @@ struct SubagentToolRow: View {
             // Tool name
             Text(tool.name)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(.primary.opacity(0.6))
 
             // Status text (same format as regular tools)
-            Text(statusText)
+            Text(L(statusText))
                 .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(.primary.opacity(0.5))
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -955,17 +955,17 @@ struct SubagentToolsSummary: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Subagent used \(tools.count) tools:")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(.primary.opacity(0.5))
 
             HStack(spacing: 8) {
                 ForEach(toolCounts.prefix(5), id: \.0) { name, count in
                     HStack(spacing: 2) {
                         Text(name)
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.4))
+                            .foregroundColor(.primary.opacity(0.4))
                         Text("×\(count)")
                             .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.3))
+                            .foregroundColor(.primary.opacity(0.3))
                     }
                 }
             }
@@ -974,7 +974,7 @@ struct SubagentToolsSummary: View {
         .padding(.horizontal, 8)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(Color.white.opacity(0.03))
+                .fill(Color.primary.opacity(0.03))
         )
     }
 }
@@ -993,7 +993,7 @@ struct ThinkingView: View {
     var body: some View {
         // Skip rendering when text is empty — streaming thinking blocks can
         // briefly arrive empty, which otherwise leaves an orphan grey dot.
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if text.trimmingCharacters(in: .primaryspacesAndNewlines).isEmpty {
             EmptyView()
         } else {
             HStack(alignment: .top, spacing: 6) {
@@ -1065,7 +1065,7 @@ struct ChatInteractivePromptBar: View {
                     .foregroundColor(TerminalColors.amber)
                 Text("Claude Code needs your input")
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.primary.opacity(0.5))
                     .lineLimit(1)
             }
             .opacity(showContent ? 1 : 0)
@@ -1085,10 +1085,10 @@ struct ChatInteractivePromptBar: View {
                     Text("Terminal")
                         .font(.system(size: 13, weight: .medium))
                 }
-                .foregroundColor(isInTmux ? .black : .white.opacity(0.4))
+                .foregroundColor(isInTmux ? Theme.panel : .primary.opacity(0.4))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(isInTmux ? Color.white.opacity(0.95) : Color.white.opacity(0.1))
+                .background(isInTmux ? Color.primary.opacity(0.95) : Color.primary.opacity(0.1))
                 .clipShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -1098,7 +1098,7 @@ struct ChatInteractivePromptBar: View {
         .frame(minHeight: 44)  // Consistent height with other bars
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color.black.opacity(0.2))
+        .background(Theme.surface)
         .onAppear {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7).delay(0.05)) {
                 showContent = true
@@ -1133,7 +1133,7 @@ struct ChatApprovalBar: View {
                 if let input = toolInput {
                     Text(input)
                         .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(.primary.opacity(0.5))
                         .lineLimit(1)
                 }
             }
@@ -1148,10 +1148,10 @@ struct ChatApprovalBar: View {
             } label: {
                 Text("Deny")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(.primary.opacity(0.7))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.1))
+                    .background(Color.primary.opacity(0.1))
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -1164,10 +1164,10 @@ struct ChatApprovalBar: View {
             } label: {
                 Text("Allow")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.black)
+                    .foregroundColor(Theme.panel)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.95))
+                    .background(Color.primary.opacity(0.95))
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -1177,7 +1177,7 @@ struct ChatApprovalBar: View {
         .frame(minHeight: 44)  // Consistent height with other bars
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color.black.opacity(0.2))
+        .background(Theme.surface)
         .onAppear {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7).delay(0.05)) {
                 showContent = true
@@ -1210,7 +1210,7 @@ struct NewMessagesIndicator: View {
                 Text(count == 1 ? "1 new message" : "\(count) new messages")
                     .font(.system(size: 12, weight: .medium))
             }
-            .foregroundColor(.white)
+            .foregroundColor(.primary)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(

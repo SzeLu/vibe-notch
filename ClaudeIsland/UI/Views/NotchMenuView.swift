@@ -29,13 +29,13 @@ struct NotchMenuView: View {
                 // Back button
                 MenuRow(
                     icon: "chevron.left",
-                    label: "Back"
+                    label: L("Back")
                 ) {
                     viewModel.toggleMenu()
                 }
 
                 Divider()
-                    .background(Color.white.opacity(0.08))
+                    .background(Color.primary.opacity(0.08))
                     .padding(.vertical, 4)
 
                 // Appearance settings
@@ -44,13 +44,13 @@ struct NotchMenuView: View {
                 ClaudeDirPickerRow()
 
                 Divider()
-                    .background(Color.white.opacity(0.08))
+                    .background(Color.primary.opacity(0.08))
                     .padding(.vertical, 4)
 
                 // System settings
                 MenuToggleRow(
                     icon: "power",
-                    label: "Launch at Login",
+                    label: L("Launch at Login"),
                     isOn: launchAtLogin
                 ) {
                     do {
@@ -68,7 +68,7 @@ struct NotchMenuView: View {
 
                 MenuToggleRow(
                     icon: "arrow.triangle.2.circlepath",
-                    label: "Hooks",
+                    label: L("Hooks"),
                     isOn: hooksInstalled
                 ) {
                     if hooksInstalled {
@@ -83,28 +83,30 @@ struct NotchMenuView: View {
                 AccessibilityRow(isEnabled: AXIsProcessTrusted())
 
                 Divider()
-                    .background(Color.white.opacity(0.08))
+                    .background(Color.primary.opacity(0.08))
                     .padding(.vertical, 4)
 
                 // About
-                UpdateRow(updateManager: updateManager)
+                if FeatureFlags.updatesEnabled {
+                    UpdateRow(updateManager: updateManager)
+                }
 
                 MenuRow(
                     icon: "star",
-                    label: "Star on GitHub"
+                    label: L("Star on GitHub")
                 ) {
-                    if let url = URL(string: "https://github.com/farouqaldori/vibe-notch") {
+                    if let url = URL(string: "https://github.com/SzeLu/vibe-notch") {
                         NSWorkspace.shared.open(url)
                     }
                 }
 
                 Divider()
-                    .background(Color.white.opacity(0.08))
+                    .background(Color.primary.opacity(0.08))
                     .padding(.vertical, 4)
 
                 MenuRow(
                     icon: "xmark.circle",
-                    label: "Quit",
+                    label: L("Quit"),
                     isDestructive: true
                 ) {
                     NSApplication.shared.terminate(nil)
@@ -180,7 +182,7 @@ struct UpdateRow: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isHovered && isInteractive ? Color.white.opacity(0.08) : Color.clear)
+                    .fill(isHovered && isInteractive ? Color.primary.opacity(0.08) : Color.clear)
             )
         }
         .buttonStyle(.plain)
@@ -197,7 +199,7 @@ struct UpdateRow: View {
         case .idle:
             Text(appVersion)
                 .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(.primary.opacity(0.4))
 
         case .upToDate:
             HStack(spacing: 6) {
@@ -259,7 +261,7 @@ struct UpdateRow: View {
         case .error:
             Text("Retry")
                 .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(.primary.opacity(0.5))
         }
     }
 
@@ -291,9 +293,9 @@ struct UpdateRow: View {
     private var iconColor: Color {
         switch updateManager.state {
         case .idle:
-            return .white.opacity(isHovered ? 1.0 : 0.7)
+            return .primary.opacity(isHovered ? 1.0 : 0.7)
         case .checking:
-            return .white.opacity(0.7)
+            return .primary.opacity(0.7)
         case .upToDate:
             return TerminalColors.green
         case .found, .readyToInstall:
@@ -335,9 +337,9 @@ struct UpdateRow: View {
     private var labelColor: Color {
         switch updateManager.state {
         case .idle, .upToDate:
-            return .white.opacity(isHovered ? 1.0 : 0.7)
+            return .primary.opacity(isHovered ? 1.0 : 0.7)
         case .checking, .downloading, .extracting, .installing:
-            return .white.opacity(0.9)
+            return .primary.opacity(0.9)
         case .found, .readyToInstall:
             return TerminalColors.green
         case .error:
@@ -404,17 +406,19 @@ struct AccessibilityRow: View {
 
                 Text("On")
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.primary.opacity(0.4))
             } else {
                 Button(action: openAccessibilitySettings) {
                     Text("Enable")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.black)
+                        // Text on the solid button: black on the white (dark-mode)
+                        // button, light on the black (light-mode) button.
+                        .foregroundColor(Theme.panel)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                         .background(
                             RoundedRectangle(cornerRadius: 5)
-                                .fill(Color.white)
+                                .fill(Color.primary)
                         )
                 }
                 .buttonStyle(.plain)
@@ -424,7 +428,7 @@ struct AccessibilityRow: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
+                .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
         )
         .onHover { isHovered = $0 }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -433,7 +437,7 @@ struct AccessibilityRow: View {
     }
 
     private var textColor: Color {
-        .white.opacity(isHovered ? 1.0 : 0.7)
+        .primary.opacity(isHovered ? 1.0 : 0.7)
     }
 
     private func openAccessibilitySettings() {
@@ -469,7 +473,7 @@ struct MenuRow: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
+                    .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
             )
         }
         .buttonStyle(.plain)
@@ -481,7 +485,7 @@ struct MenuRow: View {
         if isDestructive {
             return Color(red: 1.0, green: 0.4, blue: 0.4)
         }
-        return .white.opacity(isHovered ? 1.0 : 0.7)
+        return .primary.opacity(isHovered ? 1.0 : 0.7)
     }
 }
 
@@ -508,18 +512,18 @@ struct MenuToggleRow: View {
                 Spacer()
 
                 Circle()
-                    .fill(isOn ? TerminalColors.green : Color.white.opacity(0.3))
+                    .fill(isOn ? TerminalColors.green : Color.primary.opacity(0.3))
                     .frame(width: 6, height: 6)
 
                 Text(isOn ? "On" : "Off")
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.primary.opacity(0.4))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
+                    .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
             )
         }
         .buttonStyle(.plain)
@@ -528,6 +532,6 @@ struct MenuToggleRow: View {
     }
 
     private var textColor: Color {
-        .white.opacity(isHovered ? 1.0 : 0.7)
+        .primary.opacity(isHovered ? 1.0 : 0.7)
     }
 }
