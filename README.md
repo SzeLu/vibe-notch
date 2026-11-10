@@ -2,7 +2,7 @@
   <img src="ClaudeIsland/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" alt="Logo" width="100" height="100">
   <h3 align="center">Vibe Notch (previously Claude Island)</h3>
   <p align="center">
-    A macOS menu bar app that brings Dynamic Island-style notifications to Claude Code CLI sessions.
+    A macOS menu bar app that brings Dynamic Island-style notifications to your coding agents — Claude Code, WorkBuddy, and OpenCode.
     <br />
     <br />
     <a href="https://github.com/farouqaldori/vibe-notch/releases/latest" target="_blank" rel="noopener noreferrer">
@@ -20,20 +20,28 @@
 
 ## Features
 
-- **Notch UI** — Animated overlay that expands from the MacBook notch
-- **Live Session Monitoring** — Track multiple Claude Code sessions in real-time
-- **Permission Approvals** — Approve or deny tool executions directly from the notch
-- **Chat History** — View full conversation history with markdown rendering
-- **Auto-Setup** — Hooks install automatically on first launch
+- **Notch UI** — Animated overlay that expands from the MacBook notch, with a built-in settings menu right inside the panel.
+- **Multi-Agent Monitoring** — Track live sessions from Claude Code, WorkBuddy, and OpenCode side by side, each tagged with a short badge (`WB`, `OC`).
+- **Live Session Monitoring** — See every running agent session, its status (processing / waiting for input / completed), model, and working directory in real time.
+- **Permission Approvals** — Approve or deny Claude Code tool executions directly from the notch — no need to switch back to the terminal.
+- **Chat History** — View the full conversation with markdown rendering for Claude Code sessions.
+- **Shell Panel** — A read-only view of the shell commands your agents have run (command, output, status), scoped per session or across all sessions.
+- **Monitor Panel** — Track background / detached tasks agents spawn, with a notch bounce and sound when a task finishes.
+- **Multi-Display** — Automatically prefer the built-in display, or pin the notch to a specific screen; works correctly with displays of different sizes and arrangements.
+- **Auto-Setup** — Claude Code hooks install automatically on first launch.
+- **Polished Details** — Launch at login, selectable completion sounds, and built-in auto-updates via Sparkle.
 
 ## Requirements
 
 - macOS 15.6+
-- Claude Code CLI
+- At least one supported coding agent:
+  - **Claude Code** CLI (full support: hooks, permissions, chat history)
+  - **WorkBuddy** (session monitoring)
+  - **OpenCode** (session monitoring)
 
 ## Install
 
-Download the latest release or build from source:
+Download the latest release, or build from source:
 
 ```bash
 xcodebuild -scheme ClaudeIsland -configuration Release build
@@ -41,16 +49,22 @@ xcodebuild -scheme ClaudeIsland -configuration Release build
 
 ## How It Works
 
-Vibe Notch installs hooks into `~/.claude/hooks/` that communicate session state via a Unix socket. The app listens for events and displays them in the notch overlay.
+Each supported agent is an independent provider unit. Vibe Notch detects their activity using whatever data source each tool exposes, then normalizes everything into a single session model that the notch UI renders.
 
-When Claude needs permission to run a tool, the notch expands with approve/deny buttons—no need to switch to the terminal.
+| Agent | Detection | Capabilities |
+|-------|-----------|--------------|
+| **Claude Code** | Hooks installed into `~/.claude/hooks/` push state over a Unix socket | Sessions, permission approvals, chat history, shell & background tasks |
+| **WorkBuddy** | Polls `~/.workbuddy-ai/sessions/*.json` heartbeats and reads `~/.workbuddy-ai/workbuddy.db` (read-only) | Sessions, shell & background tasks |
+| **OpenCode** | Polls `~/.local/share/opencode/opencode.db` (read-only; override with `OPENCODE_DATA_DIR`) | Sessions, shell & background tasks |
+
+When Claude Code needs permission to run a tool, the notch expands with approve/deny buttons. Polled agents (WorkBuddy, OpenCode) are discovered every few seconds and their status is derived from the agent's own database and transcript activity.
 
 ## Analytics
 
 Vibe Notch uses Mixpanel to collect anonymous usage data:
 
 - **App Launched** — App version, build number, macOS version
-- **Session Started** — When a new Claude Code session is detected
+- **Session Started** — When a new agent session is detected
 
 No personal data or conversation content is collected.
 
