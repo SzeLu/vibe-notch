@@ -69,7 +69,8 @@ class NotchPanel: NSPanel {
     override func sendEvent(_ event: NSEvent) {
         // For mouse events, check if we should pass through
         if event.type == .leftMouseDown || event.type == .leftMouseUp ||
-           event.type == .rightMouseDown || event.type == .rightMouseUp {
+           event.type == .rightMouseDown || event.type == .rightMouseUp ||
+           event.type == .leftMouseDragged || event.type == .rightMouseDragged {
             // Get the location in window coordinates
             let locationInWindow = event.locationInWindow
 
@@ -77,14 +78,14 @@ class NotchPanel: NSPanel {
             if let contentView = self.contentView,
                contentView.hitTest(locationInWindow) == nil {
                 // No view wants this event - pass it through to windows behind
-                // by temporarily ignoring mouse events and re-posting
+                // by momentarily ignoring mouse events, re-posting, then
+                // restoring. Restoring is critical: without it the window would
+                // stay deaf to all mouse input after the first pass-through.
                 let screenLocation = convertPoint(toScreen: locationInWindow)
+                let wasIgnoring = ignoresMouseEvents
                 ignoresMouseEvents = true
-
-                // Re-post the event after a tiny delay
-                DispatchQueue.main.async { [weak self] in
-                    self?.repostMouseEvent(event, at: screenLocation)
-                }
+                repostMouseEvent(event, at: screenLocation)
+                ignoresMouseEvents = wasIgnoring
                 return
             }
         }
@@ -104,6 +105,8 @@ class NotchPanel: NSPanel {
         case .leftMouseUp: mouseType = .leftMouseUp
         case .rightMouseDown: mouseType = .rightMouseDown
         case .rightMouseUp: mouseType = .rightMouseUp
+        case .leftMouseDragged: mouseType = .leftMouseDragged
+        case .rightMouseDragged: mouseType = .rightMouseDragged
         default: return
         }
 
