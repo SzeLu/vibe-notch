@@ -226,7 +226,7 @@ struct NotchView: View {
     @ViewBuilder
     private var notchLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header row - always present, contains crab and spinner that persist across states
+            // Header row - always present, contains the app icon and spinner that persist across states
             headerRow
                 .frame(height: max(24, closedNotchSize.height))
 
@@ -251,18 +251,12 @@ struct NotchView: View {
     @ViewBuilder
     private var headerRow: some View {
         HStack(spacing: 0) {
-            // Left side - crab + optional permission indicator (visible when processing, pending, or waiting for input)
+            // Left side - app icon + optional permission indicator (visible when processing, pending, or waiting for input)
             if showClosedActivity {
                 HStack(spacing: 4) {
-                    if viewModel.status == .opened {
-                        // Expanded panel: show the generic app icon as the brand mark
-                        appIconBadge(14)
-                            .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: showClosedActivity)
-                    } else {
-                        // Closed mini-notch: keep the live (animated) crab mascot
-                        ClaudeCrabIcon(size: 14, animateLegs: isProcessing)
-                            .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: showClosedActivity)
-                    }
+                    // Generic app icon as the brand mark (same in collapsed and expanded)
+                    appIconBadge(14)
+                        .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: showClosedActivity)
 
                     // Permission indicator only (amber) - waiting for input shows checkmark on right
                     if hasPendingPermission {
@@ -328,8 +322,8 @@ struct NotchView: View {
     @ViewBuilder
     private var openedHeaderContent: some View {
         HStack(spacing: 12) {
-            // Show static crab only if not showing activity in headerRow
-            // (headerRow handles crab + indicator when showClosedActivity is true)
+            // Show the app icon only if not showing activity in headerRow
+            // (headerRow handles the app icon + indicator when showClosedActivity is true)
             if !showClosedActivity {
                 appIconBadge(14)
                     .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: !showClosedActivity)
