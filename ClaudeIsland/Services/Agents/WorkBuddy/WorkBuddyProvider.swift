@@ -12,6 +12,9 @@
 //
 
 import Foundation
+import os.log
+
+private let logger = Logger(subsystem: "com.claudeisland", category: "WorkBuddy")
 
 final class WorkBuddyProvider: PollingAgentProvider {
     private static let heartbeatTTL: TimeInterval = 90
@@ -19,6 +22,10 @@ final class WorkBuddyProvider: PollingAgentProvider {
     /// it is dropped, so the user still sees the completed card if they come
     /// back shortly after a turn ends.
     private static let completedDisplayWindow: TimeInterval = 10 * 60
+
+    /// Only log when the discovered set of sessions actually changes, so the
+    /// 3s poll loop doesn't flood the unified log with repetitive entries.
+    private var lastReportedSignature: String?
 
     init() {
         // WorkBuddy writes its transcript in bursts; give a turn a longer
@@ -43,6 +50,11 @@ final class WorkBuddyProvider: PollingAgentProvider {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let rawId = json["sessionId"] as? String,
                   !rawId.isEmpty else { continue }
+
+            // WorkBuddy keeps a pool of prewarmed agent processes alive; their
+            // heartbeats are not real user sessions and would otherwise surface
+            // as a phantom "/" session in the notch. Skip them.
+            guard (json["kind"] as? String) != "prewarm" else { continue }
 
             let heartbeat = date(fromMilliseconds: json["lastHeartbeat"]) ?? Date.distantPast
             let age = now.timeIntervalSince(heartbeat)
@@ -94,6 +106,21 @@ final class WorkBuddyProvider: PollingAgentProvider {
                 lastActivity: lastActivity
             ))
         }
+
+        // Diagnostics: only emit when the discovered set changes.
+        let signature = result
+            .map { "\($0.sessionId):\($0.phase)" }
+            .sorted()
+            .joined(separator: ", ")
+        if signature != lastReportedSignature {
+            lastReportedSignature = signature
+            if signature.isEmpty {
+                logger.info("WorkBuddy: no live sessions discovered")
+            } else {
+                logger.info("WorkBuddy: discovered \(result.count) session(s): \(signature, privacy: .public)")
+            }
+        }
+
         return result
     }
 
