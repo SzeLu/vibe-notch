@@ -1,4 +1,8 @@
 <div align="center">
+  <a href="README.zh-CN.md">🇨🇳 简体中文</a>
+</div>
+
+<div align="center">
   <img src="VibeNotch/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" alt="Logo" width="100" height="100">
   <h3 align="center">Vibe Notch (previously Claude Island)</h3>
   <p align="center">
@@ -58,6 +62,70 @@ Each supported agent is an independent provider unit. Vibe Notch detects their a
 | **OpenCode** | Polls `~/.local/share/opencode/opencode.db` (read-only; override with `OPENCODE_DATA_DIR`) | Sessions, shell & background tasks |
 
 When Claude Code needs permission to run a tool, the notch expands with approve/deny buttons. Polled agents (WorkBuddy, OpenCode) are discovered every few seconds and their status is derived from the agent's own database and transcript activity.
+
+## Scripts
+
+The `scripts/` folder contains helper scripts for building, signing, and releasing the app. All scripts are run from the project root and assume you have Xcode command-line tools and the required CLIs installed.
+
+> **Note:** The root-level `release-build.sh` is a thin one-line wrapper around `xcodebuild -scheme VibeNotch -configuration Release build`. It only performs a local compile (output lands in Xcode's DerivedData) and does **not** produce a distributable `.app`/DMG. For the full release pipeline (archive, notarize, package, publish), use the `scripts/` helpers below instead.
+
+### `build.sh` — Build a release archive
+
+Archives and exports a signed, hardened `Vibe Notch.app` using `xcodebuild`.
+
+```bash
+./scripts/build.sh
+```
+
+- Cleans and recreates `build/`, then runs `xcodebuild archive` (Release, hardened runtime, automatic signing).
+- Exports the archive to `build/export/Vibe Notch.app` using a generated `ExportOptions.plist` (`developer-id` method).
+- Requires `xcpretty` (optional — falls back to raw output if missing).
+- **Output:** `build/export/Vibe Notch.app`
+
+### `generate-keys.sh` — Generate Sparkle EdDSA keys
+
+Generates the EdDSA key pair used to sign Sparkle auto-update feeds. **Run this once and keep the private key secure.**
+
+```bash
+./scripts/generate-keys.sh
+```
+
+- Locates Sparkle's `generate_keys` tool (from an Xcode SPM build or manual install).
+- Writes the private key to `.sparkle-keys/eddsa_private_key` (chmod `600`) and stores a copy in your macOS Keychain.
+- Prints the **public key** — add it to `Info.plist` as `SUPublicEDKey`.
+- Auto-adds `.sparkle-keys/` to `.gitignore` so keys are never committed.
+- Regenerating keys will break auto-updates for existing users, so it prompts for confirmation if keys already exist.
+
+### `create-release.sh` — Notarize, package, and publish
+
+Full release pipeline: notarize the app, build a DMG, sign it for Sparkle, generate the appcast, publish a GitHub release, and update the website.
+
+```bash
+./scripts/create-release.sh
+```
+
+What it does, step by step:
+
+1. **Notarize** the app via `notarytool` (keychain profile `VibeNotch`). Prompts to skip if no credentials are set up.
+2. **Create a DMG** — uses `create-dmg` if available, otherwise `hdiutil`.
+3. **Notarize** the DMG.
+4. **Sign for Sparkle** and generate `appcast.xml` (requires `generate-keys.sh` output and the Sparkle tools from a prior Xcode build).
+5. **Create a GitHub release** (`gh`) tagged `v<VERSION>` and upload the DMG.
+6. **Update the website** (Cloudflare Pages via `wrangler`) and `appcast.xml`.
+
+Prerequisites:
+
+- Run `build.sh` first so `build/export/Vibe Notch.app` exists.
+- Run `generate-keys.sh` first for Sparkle signing.
+- Set up the notarization keychain profile:
+  ```bash
+  xcrun notarytool store-credentials "VibeNotch" \
+      --apple-id "your@email.com" \
+      --team-id "2DKS5U9LV4" \
+      --password "xxxx-xxxx-xxxx-xxxx"
+  ```
+- `gh` CLI (for the GitHub release) and `wrangler` (for the website deploy) are optional but recommended.
+- The GitHub repo and website paths are configured at the top of the script (`GITHUB_REPO`, `WEBSITE_DIR`).
 
 ## Analytics
 

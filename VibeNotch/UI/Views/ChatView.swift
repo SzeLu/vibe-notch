@@ -463,7 +463,7 @@ struct ChatView: View {
     }
 
     private func sendMessage() {
-        let text = inputText.trimmingCharacters(in: .primaryspacesAndNewlines)
+        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
         inputText = ""
@@ -623,7 +623,7 @@ struct AssistantMessageView: View {
     var body: some View {
         // Skip rendering when text is empty — otherwise the dot indicator
         // shows up alone (orphan dot) for tool-only assistant turns.
-        if text.trimmingCharacters(in: .primaryspacesAndNewlines).isEmpty {
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             EmptyView()
         } else {
             HStack(alignment: .top, spacing: 6) {
@@ -993,7 +993,7 @@ struct ThinkingView: View {
     var body: some View {
         // Skip rendering when text is empty — streaming thinking blocks can
         // briefly arrive empty, which otherwise leaves an orphan grey dot.
-        if text.trimmingCharacters(in: .primaryspacesAndNewlines).isEmpty {
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             EmptyView()
         } else {
             HStack(alignment: .top, spacing: 6) {
