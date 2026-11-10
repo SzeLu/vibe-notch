@@ -5,7 +5,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_DIR/build"
-ARCHIVE_PATH="$BUILD_DIR/ClaudeIsland.xcarchive"
+ARCHIVE_PATH="$BUILD_DIR/VibeNotch.xcarchive"
 EXPORT_PATH="$BUILD_DIR/export"
 
 echo "=== Building Vibe Notch ==="
@@ -22,7 +22,7 @@ cd "$PROJECT_DIR"
 echo "Archiving..."
 set +e
 xcodebuild archive \
-    -scheme ClaudeIsland \
+    -scheme VibeNotch \
     -configuration Release \
     -archivePath "$ARCHIVE_PATH" \
     -destination "generic/platform=macOS" \
@@ -35,7 +35,7 @@ set -e
 if [ "$ARCHIVE_EXIT" -ne 0 ]; then
     echo "ERROR: Archive failed. Re-running with full output..."
     xcodebuild archive \
-        -scheme ClaudeIsland \
+        -scheme VibeNotch \
         -configuration Release \
         -archivePath "$ARCHIVE_PATH" \
         -destination "generic/platform=macOS" \

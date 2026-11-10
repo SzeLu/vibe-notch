@@ -1,0 +1,414 @@
+//
+//  HookInstaller.swift
+//  VibeNotch
+//
+//  Auto-installs Claude Code hooks on app launch
+//
+
+import Foundation
+
+struct HookInstaller {
+
+    /// Install hook script and update settings.json on app launch
+    static func installIfNeeded() {
+        let hooksDir = ClaudePaths.hooksDir
+        let pythonScript = hooksDir.appendingPathComponent("vibe-notch-state.py")
+
+        try? FileManager.default.createDirectory(
+            at: hooksDir,
+            withIntermediateDirectories: true
+        )
+
+        if let bundled = Bundle.main.url(forResource: "vibe-notch-state", withExtension: "py") {
+            try? FileManager.default.removeItem(at: pythonScript)
+            try? FileManager.default.copyItem(at: bundled, to: pythonScript)
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o755],
+                ofItemAtPath: pythonScript.path
+            )
+        }
+
+        updateSettings(at: ClaudePaths.settingsFile)
+    }
+
+    private static func updateSettings(at settingsURL: URL) {
+        var json: [String: Any] = [:]
+        if let data = try? Data(contentsOf: settingsURL),
+           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            json = existing
+        }
+
+        let python = detectPython()
+        let command = "\(python) \(ClaudePaths.hookScriptShellPath)"
+        let hookEntry: [[String: Any]] = [["type": "command", "command": command]]
+        let hookEntryWithTimeout: [[String: Any]] = [["type": "command", "command": command, "timeout": 86400]]
+        let withMatcher: [[String: Any]] = [["matcher": "*", "hooks": hookEntry]]
+        let withMatcherAndTimeout: [[String: Any]] = [["matcher": "*", "hooks": hookEntryWithTimeout]]
+        let withoutMatcher: [[String: Any]] = [["hooks": hookEntry]]
+        // Claude Code gives SessionEnd hooks a shared 1.5s budget and kills
+        // anything over it. Declaring an explicit timeout raises that budget,
+        // so the final "ended" event is not dropped while the process exits.
+        let sessionEndConfig: [[String: Any]] = [
+            ["hooks": [["type": "command", "command": command, "timeout": 10]]]
+        ]
+        let preCompactConfig: [[String: Any]] = [
+            ["matcher": "auto", "hooks": hookEntry],
+            ["matcher": "manual", "hooks": hookEntry]
+        ]
+
+        var hooks = json["hooks"] as? [String: Any] ?? [:]
+
+        // Strip any existing Claude Island hooks from ALL event types first — even
+        // events we no longer register. Fixes users who installed v1.3 on an older
+        // Claude Code and now have invalid keys like PermissionDenied sitting in
+        // their settings.json (issue #85).
+        var cleanedHooks: [String: Any] = [:]
+        for (event, value) in hooks {
+            if let entries = value as? [[String: Any]] {
+                let cleaned = entries.compactMap { removingVibeNotchHooks(from: $0) }
+                if !cleaned.isEmpty {
+                    cleanedHooks[event] = cleaned
+                }
+            } else {
+                cleanedHooks[event] = value
+            }
+        }
+        hooks = cleanedHooks
+
+        // Register only hooks the installed Claude Code version supports.
+        // When detection fails, fall back to the baseline set that every
+        // Claude Code version has supported (no new v1.3+ hooks).
+        let installedVersion = detectClaudeCodeVersion()
+        let hookEvents = supportedHookEvents(
+            for: installedVersion,
+            withMatcher: withMatcher,
+            withMatcherAndTimeout: withMatcherAndTimeout,
+            withoutMatcher: withoutMatcher,
+            sessionEndConfig: sessionEndConfig,
+            preCompactConfig: preCompactConfig
+        )
+
+        for (event, config) in hookEvents {
+            let existing = hooks[event] as? [[String: Any]] ?? []
+            hooks[event] = existing + config
+        }
+
+        json["hooks"] = hooks
+
+        if let data = try? JSONSerialization.data(
+            withJSONObject: json,
+            options: [.prettyPrinted, .sortedKeys]
+        ) {
+            try? data.write(to: settingsURL)
+        }
+    }
+
+    // MARK: - Claude Code Version Detection
+
+    /// Simple semantic version used to gate which hook events we register.
+    /// Claude Code rejects unknown hook keys, so we must only register
+    /// events the installed version knows about.
+    struct ClaudeCodeVersion: Comparable {
+        let major: Int
+        let minor: Int
+        let patch: Int
+
+        static func < (lhs: ClaudeCodeVersion, rhs: ClaudeCodeVersion) -> Bool {
+            (lhs.major, lhs.minor, lhs.patch) < (rhs.major, rhs.minor, rhs.patch)
+        }
+    }
+
+    /// Resolve the installed Claude Code version.
+    ///
+    /// A GUI app inherits a very short PATH, so a `claude` installed through
+    /// nvm / volta / mise is invisible if we only probe a few hard-coded paths.
+    /// When probing fails we fall back to the baseline hook set, which omits
+    /// PostCompact / StopFailure / PermissionDenied — that leaves the notch
+    /// stuck in `.compacting` or `.processing` forever on modern Claude Code.
+    ///
+    /// Every JSONL transcript carries a `version` field, so prefer reading the
+    /// most recent one; it is both faster and far more reliable than spawning
+    /// binaries from a sandboxed menu bar app.
+    static func detectClaudeCodeVersion() -> ClaudeCodeVersion? {
+        if let version = versionFromRecentTranscript() { return version }
+
+        for claudePath in claudeBinaryCandidates() {
+            guard let output = runClaudeVersion(at: claudePath),
+                  let version = parseClaudeCodeVersion(from: output) else { continue }
+            return version
+        }
+        return nil
+    }
+
+    /// Read `version` from the newest session transcripts.
+    private static func versionFromRecentTranscript() -> ClaudeCodeVersion? {
+        let fm = FileManager.default
+        guard let dirs = try? fm.contentsOfDirectory(
+            at: ClaudePaths.projectsDir,
+            includingPropertiesForKeys: nil,
+            options: .skipsHiddenFiles
+        ) else { return nil }
+
+        var transcripts: [(url: URL, date: Date)] = []
+        for dir in dirs {
+            guard let files = try? fm.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: .skipsHiddenFiles
+            ) else { continue }
+
+            for file in files where file.pathExtension == "jsonl" && !file.lastPathComponent.hasPrefix("agent-") {
+                let date = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+                transcripts.append((file, date))
+            }
+        }
+
+        transcripts.sort { $0.date > $1.date }
+
+        for (file, _) in transcripts.prefix(5) {
+            guard let handle = try? FileHandle(forReadingFrom: file) else { continue }
+            defer { try? handle.close() }
+            guard let data = try? handle.read(upToCount: 16_384),
+                  let text = String(data: data, encoding: .utf8) else { continue }
+
+            for line in text.components(separatedBy: .newlines) where !line.isEmpty {
+                guard let lineData = line.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                      let value = json["version"] as? String,
+                      let version = parseClaudeCodeVersion(from: value) else { continue }
+                return version
+            }
+        }
+        return nil
+    }
+
+    /// Executable `claude` candidates, including version-manager installs that
+    /// are not on a GUI app's PATH.
+    private static func claudeBinaryCandidates() -> [String] {
+        let fm = FileManager.default
+        let home = NSHomeDirectory()
+        var paths: [String] = []
+
+        // The app defines its own `ProcessInfo` struct (process tree model),
+        // so this must be qualified with the Foundation module.
+        let envPath = Foundation.ProcessInfo.processInfo.environment["PATH"] ?? ""
+        for dir in envPath.split(separator: ":") {
+            paths.append(String(dir) + "/claude")
+        }
+
+        // nvm keeps every Node version under ~/.nvm/versions/node/<version>/bin
+        let nvmRoot = home + "/.nvm/versions/node"
+        if let versions = try? fm.contentsOfDirectory(atPath: nvmRoot) {
+            for version in versions.sorted().reversed() {
+                paths.append(nvmRoot + "/" + version + "/bin/claude")
+            }
+        }
+
+        paths.append(contentsOf: [
+            home + "/.volta/bin/claude",
+            home + "/.bun/bin/claude",
+            home + "/.asdf/shims/claude",
+            home + "/.local/share/mise/shims/claude",
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude",
+            home + "/.claude/local/claude",
+            home + "/.local/bin/claude",
+            "/usr/bin/claude",
+        ])
+
+        return paths.filter { fm.isExecutableFile(atPath: $0) }
+    }
+
+    /// Runs `claude --version` at a given path. Returns nil on any failure.
+    private static func runClaudeVersion(at path: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = ["--version"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            return String(data: data, encoding: .utf8)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Extracts the first `X.Y.Z` token from arbitrary version output.
+    /// Accepts any prefix/suffix — works for "2.1.88", "v2.1.88", "claude 2.1.88 (...)" etc.
+    static func parseClaudeCodeVersion(from text: String) -> ClaudeCodeVersion? {
+        let pattern = #"(\d+)\.(\d+)\.(\d+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(text.startIndex..., in: text)
+        guard let match = regex.firstMatch(in: text, range: range),
+              match.numberOfRanges == 4,
+              let majorRange = Range(match.range(at: 1), in: text),
+              let minorRange = Range(match.range(at: 2), in: text),
+              let patchRange = Range(match.range(at: 3), in: text),
+              let major = Int(text[majorRange]),
+              let minor = Int(text[minorRange]),
+              let patch = Int(text[patchRange])
+        else { return nil }
+        return ClaudeCodeVersion(major: major, minor: minor, patch: patch)
+    }
+
+    /// Returns the ordered list of (event, config) pairs to register, filtered
+    /// to only events the installed Claude Code version knows about.
+    private static func supportedHookEvents(
+        for version: ClaudeCodeVersion?,
+        withMatcher: [[String: Any]],
+        withMatcherAndTimeout: [[String: Any]],
+        withoutMatcher: [[String: Any]],
+        sessionEndConfig: [[String: Any]],
+        preCompactConfig: [[String: Any]]
+    ) -> [(String, [[String: Any]])] {
+        // Baseline — present in every Claude Code version that supports hooks
+        var events: [(String, [[String: Any]])] = [
+            ("UserPromptSubmit", withoutMatcher),
+            ("PreToolUse", withMatcher),
+            ("PostToolUse", withMatcher),
+            ("PermissionRequest", withMatcherAndTimeout),
+            ("Notification", withMatcher),
+            ("Stop", withoutMatcher),
+            ("SubagentStop", withoutMatcher),
+            ("SessionStart", withoutMatcher),
+            ("SessionEnd", sessionEndConfig),
+            ("PreCompact", preCompactConfig),
+        ]
+
+        // Without a detected version, stick to the baseline — better to miss
+        // features than to break settings.json on older Claude Code (#85).
+        guard let version else { return events }
+
+        // v2.0.x — PostToolUseFailure shipped alongside the PostToolUse redesign
+        if version >= ClaudeCodeVersion(major: 2, minor: 0, patch: 0) {
+            events.append(("PostToolUseFailure", withMatcher))
+        }
+        // v2.0.43 — SubagentStart, pairs with SubagentStop
+        if version >= ClaudeCodeVersion(major: 2, minor: 0, patch: 43) {
+            events.append(("SubagentStart", withoutMatcher))
+        }
+        // v2.1.76 — PostCompact, pairs with PreCompact
+        if version >= ClaudeCodeVersion(major: 2, minor: 1, patch: 76) {
+            events.append(("PostCompact", preCompactConfig))
+        }
+        // v2.1.78 — StopFailure on API errors (rate limit, auth, billing)
+        if version >= ClaudeCodeVersion(major: 2, minor: 1, patch: 78) {
+            events.append(("StopFailure", withoutMatcher))
+        }
+        // v2.1.88 — PermissionDenied for auto-mode classifier denials
+        if version >= ClaudeCodeVersion(major: 2, minor: 1, patch: 88) {
+            events.append(("PermissionDenied", withMatcher))
+        }
+
+        return events
+    }
+
+    /// Check if hooks are currently installed
+    static func isInstalled() -> Bool {
+        let settings = ClaudePaths.settingsFile
+
+        guard let data = try? Data(contentsOf: settings),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hooks = json["hooks"] as? [String: Any] else {
+            return false
+        }
+
+        for (_, value) in hooks {
+            if let entries = value as? [[String: Any]] {
+                for entry in entries {
+                    if let entryHooks = entry["hooks"] as? [[String: Any]] {
+                        for hook in entryHooks {
+                            if let cmd = hook["command"] as? String,
+                               cmd.contains("vibe-notch-state.py") {
+                                return true
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return false
+    }
+
+    /// Uninstall hooks from settings.json and remove script
+    static func uninstall() {
+        let hooksDir = ClaudePaths.hooksDir
+        let pythonScript = hooksDir.appendingPathComponent("vibe-notch-state.py")
+        let settings = ClaudePaths.settingsFile
+
+        try? FileManager.default.removeItem(at: pythonScript)
+
+        guard let data = try? Data(contentsOf: settings),
+              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var hooks = json["hooks"] as? [String: Any] else {
+            return
+        }
+
+        for (event, value) in hooks {
+            if var entries = value as? [[String: Any]] {
+                entries = entries.compactMap { removingVibeNotchHooks(from: $0) }
+
+                if entries.isEmpty {
+                    hooks.removeValue(forKey: event)
+                } else {
+                    hooks[event] = entries
+                }
+            }
+        }
+
+        if hooks.isEmpty {
+            json.removeValue(forKey: "hooks")
+        } else {
+            json["hooks"] = hooks
+        }
+
+        if let data = try? JSONSerialization.data(
+            withJSONObject: json,
+            options: [.prettyPrinted, .sortedKeys]
+        ) {
+            try? data.write(to: settings)
+        }
+    }
+
+    private static func detectPython() -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = ["python3"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            if process.terminationStatus == 0 {
+                return "python3"
+            }
+        } catch {}
+
+        return "python"
+    }
+
+    nonisolated private static func removingVibeNotchHooks(from entry: [String: Any]) -> [String: Any]? {
+        guard var entryHooks = entry["hooks"] as? [[String: Any]] else {
+            return entry
+        }
+
+        entryHooks.removeAll(where: isVibeNotchHook)
+        guard !entryHooks.isEmpty else { return nil }
+
+        var updatedEntry = entry
+        updatedEntry["hooks"] = entryHooks
+        return updatedEntry
+    }
+
+    nonisolated private static func isVibeNotchHook(_ hook: [String: Any]) -> Bool {
+        let cmd = hook["command"] as? String ?? ""
+        return cmd.contains("vibe-notch-state.py")
+    }
+}

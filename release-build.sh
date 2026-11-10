@@ -1,1 +1,1 @@
-xcodebuild -scheme ClaudeIsland -configuration Release build
+xcodebuild -scheme VibeNotch -configuration Release build

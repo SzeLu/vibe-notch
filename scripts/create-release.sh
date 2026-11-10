@@ -13,12 +13,12 @@ KEYS_DIR="$PROJECT_DIR/.sparkle-keys"
 GITHUB_REPO="farouqaldori/vibe-notch"
 
 # Website repo for auto-updating appcast
-WEBSITE_DIR="${CLAUDE_ISLAND_WEBSITE:-$PROJECT_DIR/../ClaudeIsland-website}"
+WEBSITE_DIR="${CLAUDE_ISLAND_WEBSITE:-$PROJECT_DIR/../VibeNotch-website}"
 WEBSITE_PUBLIC="$WEBSITE_DIR/public"
 
 APP_PATH="$EXPORT_PATH/Vibe Notch.app"
 APP_NAME="VibeNotch"
-KEYCHAIN_PROFILE="ClaudeIsland"
+KEYCHAIN_PROFILE="VibeNotch"
 
 echo "=== Creating Release ==="
 echo ""
@@ -144,7 +144,7 @@ SPARKLE_SIGN=""
 GENERATE_APPCAST=""
 
 POSSIBLE_PATHS=(
-    "$HOME/Library/Developer/Xcode/DerivedData/ClaudeIsland-*/SourcePackages/artifacts/sparkle/Sparkle/bin"
+    "$HOME/Library/Developer/Xcode/DerivedData/VibeNotch-*/SourcePackages/artifacts/sparkle/Sparkle/bin"
 )
 
 for path_pattern in "${POSSIBLE_PATHS[@]}"; do
