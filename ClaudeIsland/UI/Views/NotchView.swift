@@ -23,6 +23,7 @@ struct NotchView: View {
     @State private var previousPendingIds: Set<String> = []
     @State private var previousWaitingForInputIds: Set<String> = []
     @State private var waitingForInputTimestamps: [String: Date] = [:]  // sessionId -> when it entered waitingForInput
+    @State private var completionNotifiedAt: [String: Date] = [:]  // sessionId -> last completion announcement
     @State private var isVisible: Bool = false
     @State private var isHovering: Bool = false
     @State private var isBouncing: Bool = false
@@ -441,22 +442,45 @@ struct NotchView: View {
         let currentIds = Set(waitingForInputSessions.map { $0.stableId })
         let newWaitingIds = currentIds.subtracting(previousWaitingForInputIds)
 
-        // Track timestamps for newly waiting sessions
         let now = Date()
+        /// Polled agents (WorkBuddy / OpenCode) infer "done" from a quiet
+        /// transcript. A single turn can go quiet, resume, then go quiet again,
+        /// which would otherwise announce completion several times. Only the
+        /// first completion within this window is announced; later re-entries
+        /// keep the checkmark steady but stay silent.
+        let completionCooldown: TimeInterval = 60
+
+        var trulyNewCompletionIds: Set<String> = []
+
         for session in waitingForInputSessions where newWaitingIds.contains(session.stableId) {
+            let recentlyNotified = completionNotifiedAt[session.stableId]
+                .map { now.timeIntervalSince($0) < completionCooldown } ?? false
+
+            if recentlyNotified {
+                // Same round — don't re-bounce, re-beep, or re-show the checkmark.
+                continue
+            }
+
             waitingForInputTimestamps[session.stableId] = now
+            completionNotifiedAt[session.stableId] = now
+            trulyNewCompletionIds.insert(session.stableId)
         }
 
-        // Clean up timestamps for sessions no longer waiting
+        // Clean up display timestamps for sessions no longer waiting
         let staleIds = Set(waitingForInputTimestamps.keys).subtracting(currentIds)
         for staleId in staleIds {
             waitingForInputTimestamps.removeValue(forKey: staleId)
         }
 
-        // Bounce the notch when a session newly enters waitingForInput state
-        if !newWaitingIds.isEmpty {
-            // Get the sessions that just entered waitingForInput
-            let newlyWaitingSessions = waitingForInputSessions.filter { newWaitingIds.contains($0.stableId) }
+        // Bound memory: drop completion records older than 5 minutes.
+        let cutoff = now.addingTimeInterval(-300)
+        for (id, ts) in completionNotifiedAt where ts < cutoff {
+            completionNotifiedAt.removeValue(forKey: id)
+        }
+
+        // Announce only genuinely new completions
+        if !trulyNewCompletionIds.isEmpty {
+            let newlyWaitingSessions = waitingForInputSessions.filter { trulyNewCompletionIds.contains($0.stableId) }
 
             // Play notification sound if the session is not actively focused
             if let soundName = AppSettings.notificationSound.soundName {

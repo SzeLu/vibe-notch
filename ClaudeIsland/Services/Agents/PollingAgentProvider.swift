@@ -18,10 +18,18 @@ class PollingAgentProvider: AgentProvider, @unchecked Sendable {
     let pollInterval: TimeInterval
     let busyWindow: TimeInterval
 
+    /// Number of consecutive idle polls before "done" is published.
+    /// Polled transcripts are bursty — a single turn can be quiet for a long
+    /// time between tool calls. Without this, the notch announces completion
+    /// several times within one turn.
+    private let phaseConfirmationTicks = 3
+
     private let queue: DispatchQueue
     private var timer: DispatchSourceTimer?
+    private var publishedPhases: [String: SessionPhase] = [:]
+    private var idleTicks: [String: Int] = [:]
 
-    init(kind: AgentKind, pollInterval: TimeInterval = 3, busyWindow: TimeInterval = 30) {
+    init(kind: AgentKind, pollInterval: TimeInterval = 3, busyWindow: TimeInterval = 60) {
         self.kind = kind
         self.pollInterval = pollInterval
         self.busyWindow = busyWindow
@@ -36,6 +44,8 @@ class PollingAgentProvider: AgentProvider, @unchecked Sendable {
         queue.async { [weak self] in
             self?.timer?.cancel()
             self?.timer = nil
+            self?.publishedPhases.removeAll()
+            self?.idleTicks.removeAll()
         }
     }
 
@@ -50,11 +60,71 @@ class PollingAgentProvider: AgentProvider, @unchecked Sendable {
     }
 
     private func refresh() {
-        let found = discover()
+        let stable = stabilize(discover())
         let agentKind = kind
         Task {
-            await SessionStore.shared.applyAgentSnapshots(found, from: agentKind)
+            await SessionStore.shared.applyAgentSnapshots(stable, from: agentKind)
         }
+    }
+
+    /// Debounce the busy/idle signal.
+    ///
+    /// A fresh write is published immediately (the agent is clearly working),
+    /// but "waiting for input" is only announced after several consecutive
+    /// idle polls. That keeps one turn from producing several completion
+    /// notifications while still letting a real new turn show up at once.
+    private func stabilize(_ snapshots: [AgentSessionSnapshot]) -> [AgentSessionSnapshot] {
+        var result: [AgentSessionSnapshot] = []
+        var seen: Set<String> = []
+
+        for var snapshot in snapshots {
+            seen.insert(snapshot.sessionId)
+            let published = publishedPhases[snapshot.sessionId]
+
+            switch snapshot.phase {
+            case .processing:
+                idleTicks.removeValue(forKey: snapshot.sessionId)
+                publishedPhases[snapshot.sessionId] = .processing
+                result.append(snapshot)
+
+            case .waitingForInput:
+                guard let published else {
+                    // First sighting of this session — publish as discovered.
+                    publishedPhases[snapshot.sessionId] = .waitingForInput
+                    result.append(snapshot)
+                    continue
+                }
+
+                if published == .waitingForInput {
+                    idleTicks.removeValue(forKey: snapshot.sessionId)
+                    result.append(snapshot)
+                    continue
+                }
+
+                let ticks = (idleTicks[snapshot.sessionId] ?? 0) + 1
+                if ticks >= phaseConfirmationTicks {
+                    idleTicks.removeValue(forKey: snapshot.sessionId)
+                    publishedPhases[snapshot.sessionId] = .waitingForInput
+                    result.append(snapshot)
+                } else {
+                    // Hold the previous phase until the idle signal is stable.
+                    idleTicks[snapshot.sessionId] = ticks
+                    snapshot.phase = published
+                    result.append(snapshot)
+                }
+
+            default:
+                idleTicks.removeValue(forKey: snapshot.sessionId)
+                publishedPhases[snapshot.sessionId] = snapshot.phase
+                result.append(snapshot)
+            }
+        }
+
+        for id in Set(publishedPhases.keys).subtracting(seen) {
+            publishedPhases.removeValue(forKey: id)
+            idleTicks.removeValue(forKey: id)
+        }
+        return result
     }
 
     /// Override in each provider. Always called on the provider's serial queue.

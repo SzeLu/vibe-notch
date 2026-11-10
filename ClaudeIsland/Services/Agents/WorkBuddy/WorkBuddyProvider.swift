@@ -15,9 +15,16 @@ import Foundation
 
 final class WorkBuddyProvider: PollingAgentProvider {
     private static let heartbeatTTL: TimeInterval = 90
+    /// A finished session keeps showing its "done" state for this long before
+    /// it is dropped, so the user still sees the completed card if they come
+    /// back shortly after a turn ends.
+    private static let completedDisplayWindow: TimeInterval = 10 * 60
 
     init() {
-        super.init(kind: .workBuddy)
+        // WorkBuddy writes its transcript in bursts; give a turn a longer
+        // quiet window before it can be considered finished. (Used only as a
+        // fallback when the DB status is unavailable.)
+        super.init(kind: .workBuddy, busyWindow: 90)
     }
 
     override func discover() -> [AgentSessionSnapshot] {
@@ -46,9 +53,7 @@ final class WorkBuddyProvider: PollingAgentProvider {
             if let pid, !isProcessAlive(pid) { continue }
 
             let metadata = workbuddyMetadata(sessionId: rawId, home: home)
-            let status = metadata?["status"] as? String ?? ""
-            // An empty status means the DB read failed — keep the live heartbeat.
-            guard status.isEmpty || status == "working" || status == "pending" else { continue }
+            let status = (metadata?["status"] as? String ?? "").lowercased()
 
             let transcript = modificationDate(
                 of: rawId + ".jsonl",
@@ -57,12 +62,34 @@ final class WorkBuddyProvider: PollingAgentProvider {
             let lastActivity = date(fromMilliseconds: metadata?["last_activity_at"])
                 ?? max(heartbeat, transcript ?? Date.distantPast)
 
+            // WorkBuddy records an explicit per-session status. That is a far
+            // more reliable "is this turn still running?" signal than transcript
+            // mtimes: mtimes go quiet between tool calls, which used to make a
+            // single turn announce "done" several times. With the status field
+            // one turn yields exactly one working → completed transition.
+            let resolvedPhase: SessionPhase
+            switch status {
+            case "working", "pending", "running", "busy":
+                resolvedPhase = .processing
+            case "completed", "complete", "done", "error", "idle":
+                // Drop finished sessions after the display window so old cards
+                // don't pile up while WorkBuddy keeps the process alive.
+                if now.timeIntervalSince(lastActivity) > Self.completedDisplayWindow {
+                    continue
+                }
+                resolvedPhase = .waitingForInput
+            default:
+                // Empty / unknown status (e.g. DB read failed) — fall back to
+                // the transcript write time.
+                resolvedPhase = phase(lastWrite: transcript, now: now)
+            }
+
             result.append(snapshot(
                 rawId: rawId,
                 cwd: json["cwd"] as? String ?? "",
                 title: metadata?["title"] as? String,
                 model: metadata?["model"] as? String,
-                phase: phase(lastWrite: transcript, now: now),
+                phase: resolvedPhase,
                 pid: pid,
                 lastActivity: lastActivity
             ))

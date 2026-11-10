@@ -17,7 +17,8 @@ struct AgentSessionSnapshot: Sendable, Equatable {
     let cwd: String
     let title: String?
     let model: String?
-    let phase: SessionPhase
+    /// Mutable so PollingAgentProvider can hold a debounced phase.
+    var phase: SessionPhase
     let pid: Int?
     let lastActivity: Date
 }
