@@ -66,11 +66,13 @@ struct ClaudeInstancesView: View {
     }
 
     private var instancesList: some View {
-        ScrollView(.vertical, showsIndicators: false) {
+        let labels = folderLabels
+        return ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(spacing: 2) {
                 ForEach(sortedInstances) { session in
                     InstanceRow(
                         session: session,
+                        folderLabel: labels[session.sessionId] ?? session.projectName,
                         onFocus: { focusSession(session) },
                         onChat: { openChat(session) },
                         onArchive: { archiveSession(session) },
@@ -85,6 +87,48 @@ struct ClaudeInstancesView: View {
             .padding(.vertical, 4)
         }
         .scrollBounceBehavior(.basedOnSize)
+    }
+
+    /// Disambiguated folder label per session. When two sessions share the same
+    /// trailing folder name but live at different absolute paths, each label is
+    /// expanded from the first differing path component down to the leaf, so
+    /// `GitHub/vibe-notch` and `work/vibe-notch` stay distinguishable.
+    private var folderLabels: [String: String] {
+        var groups: [String: [SessionState]] = [:]
+        for session in sortedInstances where !session.cwd.isEmpty {
+            groups[session.projectName, default: []].append(session)
+        }
+
+        var labels: [String: String] = [:]
+        for (name, group) in groups {
+            if Set(group.map(\.cwd)).count <= 1 {
+                for session in group { labels[session.sessionId] = name }
+                continue
+            }
+            let cwds = group.map(\.cwd)
+            for session in group {
+                labels[session.sessionId] = Self.disambiguatedLabel(session.cwd, among: cwds)
+            }
+        }
+        return labels
+    }
+
+    /// Minimal unique trailing path suffix for `cwd` relative to `cwds`,
+    /// bounded in length so it never renders unreasonably long.
+    private static func disambiguatedLabel(_ cwd: String, among cwds: [String]) -> String {
+        let comps = cwd.split(separator: "/").map(String.init)
+        guard !comps.isEmpty else { return cwd }
+        let others = cwds.filter { $0 != cwd }.map { $0.split(separator: "/").map(String.init) }
+
+        for n in 1...comps.count {
+            let suffix = Array(comps.suffix(n))
+            let label = suffix.joined(separator: "/")
+            let shared = others.contains { other in
+                other.count >= n && Array(other.suffix(n)) == suffix
+            }
+            if !shared || label.count > 40 { return label }
+        }
+        return comps.joined(separator: "/")
     }
 
     // MARK: - Actions
@@ -122,6 +166,9 @@ struct ClaudeInstancesView: View {
 
 struct InstanceRow: View {
     let session: SessionState
+    /// Disambiguated folder label (may include extra path components when
+    /// another session shares the same trailing folder name).
+    let folderLabel: String
     let onFocus: () -> Void
     let onChat: () -> Void
     let onArchive: () -> Void
@@ -133,6 +180,7 @@ struct InstanceRow: View {
     @State private var isHovered = false
     @State private var spinnerPhase = 0
     @State private var isYabaiAvailable = false
+    @State private var gitRepo: GitInfo.Repo?
 
     private let claudeOrange = Color(red: 0.85, green: 0.47, blue: 0.34)
     private let spinnerSymbols = ["·", "✢", "✳", "∗", "✻", "✽"]
@@ -262,6 +310,36 @@ struct InstanceRow: View {
                         .foregroundColor(.white.opacity(0.4))
                         .lineLimit(1)
                 }
+
+                // Working directory + git branch for this session
+                if !session.cwd.isEmpty {
+                    HStack(spacing: 5) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.3))
+
+                        Text(folderLabel)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.4))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .layoutPriority(1)
+
+                        if let branch = gitRepo?.displayBranch, !branch.isEmpty {
+                            Image(systemName: "arrow.triangle.branch")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.3))
+                                .padding(.leading, 2)
+
+                            Text(branch)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.45))
+                                .lineLimit(1)
+                                .layoutPriority(2)
+                        }
+                    }
+                    .help(session.cwd)
+                }
             }
 
             Spacer(minLength: 0)
@@ -346,6 +424,13 @@ struct InstanceRow: View {
         .onHover { isHovered = $0 }
         .task {
             isYabaiAvailable = await WindowFinder.shared.isYabaiAvailable()
+        }
+        .task(id: session.cwd) {
+            guard !session.cwd.isEmpty else { return }
+            let cwd = session.cwd
+            gitRepo = await Task.detached(priority: .utility) {
+                GitInfo.repo(for: cwd)
+            }.value
         }
     }
 
