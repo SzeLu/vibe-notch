@@ -978,6 +978,61 @@ actor SessionStore {
         cancelPendingSync(sessionId: sessionId)
     }
 
+    // MARK: - Agent Snapshots
+
+    /// Merge snapshots from any polling-based agent provider into the store.
+    ///
+    /// Providers own discovery; the store owns the merge. Only sessions of the
+    /// given kind are touched, so a provider can never disturb another agent's
+    /// session (or a hook-driven Claude Code session).
+    func applyAgentSnapshots(_ snapshots: [AgentSessionSnapshot], from kind: AgentKind) {
+        let before = sessions
+        let incoming = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.sessionId, $0) })
+
+        for (sessionId, session) in sessions
+        where session.source == kind && incoming[sessionId] == nil {
+            sessions.removeValue(forKey: sessionId)
+            activePhaseSince.removeValue(forKey: sessionId)
+            cancelPendingSync(sessionId: sessionId)
+        }
+
+        for snapshot in snapshots {
+            let info = ConversationInfo(
+                summary: snapshot.title,
+                lastMessage: snapshot.model,
+                lastMessageRole: snapshot.model == nil ? nil : "assistant",
+                lastToolName: nil,
+                firstUserMessage: nil,
+                lastUserMessageDate: nil
+            )
+
+            if var existing = sessions[snapshot.sessionId], existing.source == kind {
+                if existing.phase.canTransition(to: snapshot.phase) {
+                    existing.phase = snapshot.phase
+                }
+                existing.pid = snapshot.pid
+                existing.conversationInfo = info
+                existing.lastActivity = snapshot.lastActivity
+                sessions[snapshot.sessionId] = existing
+            } else {
+                sessions[snapshot.sessionId] = SessionState(
+                    sessionId: snapshot.sessionId,
+                    cwd: snapshot.cwd,
+                    source: snapshot.kind,
+                    pid: snapshot.pid,
+                    phase: snapshot.phase,
+                    conversationInfo: info,
+                    lastActivity: snapshot.lastActivity
+                )
+            }
+        }
+
+        // The poll runs every 3s; avoid republishing identical state.
+        if sessions != before {
+            publishState()
+        }
+    }
+
     // MARK: - History Loading
 
     private func loadHistoryFromFile(sessionId: String, cwd: String) async {
@@ -1145,7 +1200,9 @@ actor SessionStore {
             // A phase stuck in processing/compacting is the main "still active"
             // symptom: Stop / PostCompact / SessionEnd hooks can be dropped, and
             // Claude Code's session recap is not a hook event at all.
-            if session.phase.isActive,
+            // WorkBuddy sessions are re-polled every 3s, so they self-correct.
+            if session.source.usesClaudeTranscript,
+               session.phase.isActive,
                let since = activePhaseSince[sessionId],
                Date().timeIntervalSince(since) > stuckPhaseThreshold {
                 stuckSessionIds.append(sessionId)
@@ -1154,7 +1211,8 @@ actor SessionStore {
             let needsSync: Bool
             switch session.phase {
             case .processing, .waitingForApproval:
-                needsSync = true
+                // Only Claude Code writes a Claude JSONL transcript.
+                needsSync = session.source.usesClaudeTranscript
             default:
                 needsSync = false
             }

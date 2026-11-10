@@ -28,7 +28,7 @@ struct ClaudeInstancesView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.4))
 
-            Text("Run claude in terminal")
+            Text("Start a session in any supported agent")
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.25))
         }
@@ -177,6 +177,18 @@ struct InstanceRow: View {
                         .foregroundColor(.white)
                         .lineLimit(1)
 
+                    // Badge comes from the agent's metadata, so adding a new
+                    // provider never requires a UI change here.
+                    if !session.source.badge.isEmpty {
+                        Text(session.source.badge)
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundColor(TerminalColors.amber.opacity(0.9))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(TerminalColors.amber.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+
                     // Token usage indicator
                     if session.usage.totalTokens > 0 {
                         Text(session.usage.formattedTotal)
@@ -285,9 +297,11 @@ struct InstanceRow: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             } else {
                 HStack(spacing: 8) {
-                    // Chat icon - always show
-                    IconButton(icon: "bubble.left") {
-                        onChat()
+                    // Chat history is only available for Claude transcripts.
+                    if session.source.supportsChatHistory {
+                        IconButton(icon: "bubble.left") {
+                            onChat()
+                        }
                     }
 
                     // Focus icon (only for tmux instances with yabai)
@@ -297,8 +311,11 @@ struct InstanceRow: View {
                         }
                     }
 
-                    // Archive button - only for idle or completed sessions
-                    if session.phase == .idle || session.phase == .waitingForInput {
+                    // Archive button - only for idle or completed sessions of
+                    // agents that support it. Polled sessions are re-discovered
+                    // on the next tick, so archiving them would be undone.
+                    if session.source.supportsArchive &&
+                        (session.phase == .idle || session.phase == .waitingForInput) {
                         IconButton(icon: "archivebox") {
                             onArchive()
                         }
@@ -312,7 +329,9 @@ struct InstanceRow: View {
         .padding(.vertical, 10)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-            onChat()
+            if session.source.supportsChatHistory {
+                onChat()
+            }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isWaitingForApproval)
         .background(

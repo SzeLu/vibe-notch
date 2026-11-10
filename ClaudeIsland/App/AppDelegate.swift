@@ -67,7 +67,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Mixpanel.mainInstance().track(event: "App Launched")
         Mixpanel.mainInstance().flush()
 
-        HookInstaller.installIfNeeded()
+        // Hook installation is owned by the Claude Code provider, which starts
+        // with the AgentRegistry when the notch view appears.
         NSApplication.shared.setActivationPolicy(.accessory)
 
         windowManager = WindowManager()
