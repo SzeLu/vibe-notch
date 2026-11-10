@@ -254,8 +254,15 @@ struct NotchView: View {
             // Left side - crab + optional permission indicator (visible when processing, pending, or waiting for input)
             if showClosedActivity {
                 HStack(spacing: 4) {
-                    ClaudeCrabIcon(size: 14, animateLegs: isProcessing)
-                        .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: showClosedActivity)
+                    if viewModel.status == .opened {
+                        // Expanded panel: show the generic app icon as the brand mark
+                        appIconBadge(14)
+                            .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: showClosedActivity)
+                    } else {
+                        // Closed mini-notch: keep the live (animated) crab mascot
+                        ClaudeCrabIcon(size: 14, animateLegs: isProcessing)
+                            .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: showClosedActivity)
+                    }
 
                     // Permission indicator only (amber) - waiting for input shows checkmark on right
                     if hasPendingPermission {
@@ -306,6 +313,16 @@ struct NotchView: View {
         max(0, closedNotchSize.height - 12) + 10
     }
 
+    /// Renders the app icon as a small rounded badge (used as the brand mark
+    /// in the top-left of the expanded panel).
+    private func appIconBadge(_ size: CGFloat) -> some View {
+        Image(nsImage: NSImage(named: "AppIcon") ?? NSImage())
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.23, style: .continuous))
+    }
+
     // MARK: - Opened Header Content
 
     @ViewBuilder
@@ -314,7 +331,7 @@ struct NotchView: View {
             // Show static crab only if not showing activity in headerRow
             // (headerRow handles crab + indicator when showClosedActivity is true)
             if !showClosedActivity {
-                ClaudeCrabIcon(size: 14)
+                appIconBadge(14)
                     .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: !showClosedActivity)
                     .padding(.leading, 8)
             }

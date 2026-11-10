@@ -186,6 +186,8 @@ struct ShellCommandRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .top, spacing: 8) {
+                AgentIcon(kind: record.agentKind, size: 14)
+
                 Image(systemName: statusSymbol)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(statusColor)
@@ -200,8 +202,6 @@ struct ShellCommandRow: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     HStack(spacing: 6) {
-                        AgentIcon(kind: record.agentKind, size: 14)
-
                         if !sessionTitle.isEmpty {
                             Text(sessionTitle)
                                 .font(.system(size: 10))

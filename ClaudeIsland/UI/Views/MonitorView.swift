@@ -172,6 +172,8 @@ struct BackgroundTaskRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .top, spacing: 8) {
+                AgentIcon(kind: record.agentKind, size: 14)
+
                 Image(systemName: statusSymbol)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(statusColor)
@@ -187,8 +189,6 @@ struct BackgroundTaskRow: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     HStack(spacing: 6) {
-                        AgentIcon(kind: record.agentKind, size: 14)
-
                         Text(statusText)
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(statusColor)

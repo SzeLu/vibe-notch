@@ -169,7 +169,10 @@ struct InstanceRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            // State indicator on left
+            // Provider mark at the start of the row
+            AgentIcon(kind: session.source, size: 16)
+
+            // State indicator
             stateIndicator
                 .frame(width: 14)
 
@@ -180,10 +183,6 @@ struct InstanceRow: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.white)
                         .lineLimit(1)
-
-                    // Provider mark, so every agent's session is identifiable
-                    // at a glance without reading a text badge.
-                    AgentIcon(kind: session.source, size: 16)
 
                     // Token usage indicator
                     if session.usage.totalTokens > 0 {
