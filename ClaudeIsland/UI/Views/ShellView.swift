@@ -200,15 +200,7 @@ struct ShellCommandRow: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     HStack(spacing: 6) {
-                        if !record.agentKind.badge.isEmpty {
-                            Text(record.agentKind.badge)
-                                .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                                .foregroundColor(TerminalColors.amber.opacity(0.9))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 0.5)
-                                .background(TerminalColors.amber.opacity(0.15))
-                                .clipShape(Capsule())
-                        }
+                        AgentIcon(kind: record.agentKind, size: 14)
 
                         if !sessionTitle.isEmpty {
                             Text(sessionTitle)

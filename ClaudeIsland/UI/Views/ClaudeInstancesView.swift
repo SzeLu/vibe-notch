@@ -181,17 +181,9 @@ struct InstanceRow: View {
                         .foregroundColor(.white)
                         .lineLimit(1)
 
-                    // Badge comes from the agent's metadata, so adding a new
-                    // provider never requires a UI change here.
-                    if !session.source.badge.isEmpty {
-                        Text(session.source.badge)
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundColor(TerminalColors.amber.opacity(0.9))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(TerminalColors.amber.opacity(0.15))
-                            .clipShape(Capsule())
-                    }
+                    // Provider mark, so every agent's session is identifiable
+                    // at a glance without reading a text badge.
+                    AgentIcon(kind: session.source, size: 16)
 
                     // Token usage indicator
                     if session.usage.totalTokens > 0 {
