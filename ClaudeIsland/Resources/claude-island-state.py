@@ -8,9 +8,36 @@ import json
 import os
 import socket
 import sys
+import time
 
 SOCKET_PATH = "/tmp/claude-island.sock"
 TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
+IO_TIMEOUT_SECONDS = 1  # fire-and-forget events must not block Claude Code
+
+# Claude Code keeps adding hook events (InstructionsLoaded, MessageDisplay,
+# ConfigChange, ...). None of them change the session lifecycle. Reporting them
+# would create or refresh a session for a turn that may already be over, which
+# is one of the ways the notch ends up showing a finished session as active.
+IGNORED_EVENTS = {
+    "InstructionsLoaded",
+    "MessageDisplay",
+    "ConfigChange",
+    "PreModelSwitch",
+    "PostModelSwitch",
+    "CwdChanged",
+    "DirectoryAdded",
+    "FileChanged",
+    "WorktreeCreate",
+    "WorktreeRemove",
+    "Setup",
+    "TeammateIdle",
+    "TaskCreated",
+    "TaskCompleted",
+    "Elicitation",
+    "ElicitationResult",
+    "PostToolBatch",
+    "UserPromptExpansion",
+}
 
 
 def get_tty():
@@ -26,7 +53,7 @@ def get_tty():
             ["ps", "-p", str(ppid), "-o", "tty="],
             capture_output=True,
             text=True,
-            timeout=2
+            timeout=1
         )
         tty = result.stdout.strip()
         if tty and tty != "??" and tty != "-":
@@ -49,26 +76,42 @@ def get_tty():
     return None
 
 
-def send_event(state):
-    """Send event to app, return response if any"""
-    try:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(TIMEOUT_SECONDS)
-        sock.connect(SOCKET_PATH)
-        sock.sendall(json.dumps(state).encode())
+def send_event(state, retries=0):
+    """Send event to app, return response if any.
 
-        # For permission requests, wait for response
-        if state.get("status") == "waiting_for_approval":
-            response = sock.recv(4096)
-            sock.close()
-            if response:
-                return json.loads(response.decode())
-        else:
-            sock.close()
+    `retries` is used for the final SessionEnd event. Claude Code tears the
+    process down as soon as hooks return and gives SessionEnd a shared 1.5s
+    budget; a single dropped frame would leave the notch showing a dead
+    session as active.
+    """
+    for attempt in range(retries + 1):
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(IO_TIMEOUT_SECONDS)
+            sock.connect(SOCKET_PATH)
+            sock.sendall(json.dumps(state).encode())
 
-        return None
-    except (socket.error, OSError, json.JSONDecodeError):
-        return None
+            # For permission requests, wait for response
+            if state.get("status") == "waiting_for_approval":
+                sock.settimeout(TIMEOUT_SECONDS)
+                response = sock.recv(4096)
+                sock.close()
+                if response:
+                    return json.loads(response.decode())
+            else:
+                sock.close()
+
+            return None
+        except (socket.error, OSError, json.JSONDecodeError, ValueError):
+            if sock is not None:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+            if attempt < retries:
+                time.sleep(0.15)
+    return None
 
 
 def main():
@@ -82,9 +125,13 @@ def main():
     cwd = data.get("cwd", "")
     tool_input = data.get("tool_input", {})
 
-    # Get process info
+    if event in IGNORED_EVENTS:
+        sys.exit(0)
+
+    # Get process info. SessionEnd hooks share a 1.5s budget, so skip the ps
+    # subprocess for them — the app only needs the session id at that point.
     claude_pid = os.getppid()
-    tty = get_tty()
+    tty = None if event == "SessionEnd" else get_tty()
 
     # Build state object
     state = {
@@ -213,6 +260,7 @@ def main():
 
     elif event == "SessionEnd":
         state["status"] = "ended"
+        state["reason"] = data.get("reason")
 
     elif event == "PreCompact":
         # Context is being compacted (manual or auto)
@@ -223,10 +271,16 @@ def main():
         state["status"] = "processing"
 
     else:
-        state["status"] = "unknown"
+        # Unknown future events carry no reliable lifecycle meaning. Do NOT
+        # report them as "unknown" — that resurrects finished sessions and
+        # can flip a settled phase back to idle/processing.
+        sys.exit(0)
 
     # Send to socket (fire and forget for non-permission events)
-    send_event(state)
+    if state.get("status") == "ended":
+        send_event(state, retries=2)
+    else:
+        send_event(state)
 
 
 if __name__ == "__main__":

@@ -507,6 +507,69 @@ actor ConversationParser {
         return true
     }
 
+    /// JSONL system subtypes that are only written once a turn has finished.
+    /// `away_summary` is the "session recap" Claude Code prints in the terminal
+    /// when the user returns after being away (v2.1.3xx+). It is NOT a hook
+    /// event, so the app has to read it from the transcript.
+    private static let turnEndSubtypes: Set<String> = [
+        "stop_hook_summary",
+        "turn_duration",
+        "away_summary",
+        "compact_boundary",
+    ]
+
+    /// Determine whether the transcript shows that the current turn has ended.
+    ///
+    /// Reads only the tail of the JSONL and walks backwards. Metadata records
+    /// (cost-state, last-prompt, file-history snapshots, api-request blobs, ...)
+    /// are skipped; the first meaningful record decides the answer:
+    ///   - a turn-end marker     -> the turn is over
+    ///   - a user/assistant msg  -> a new turn is in progress
+    ///
+    /// This is the fallback for dropped Stop / PostCompact / SessionEnd hooks,
+    /// which otherwise leave the notch showing a finished session as active.
+    func hasTurnEnded(sessionId: String, cwd: String) -> Bool {
+        let path = Self.sessionFilePath(sessionId: sessionId, cwd: cwd)
+        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+        defer { try? handle.close() }
+
+        let tailLength: UInt64 = 64 * 1024
+        guard let fileSize = try? handle.seekToEnd(), fileSize > 0 else { return false }
+        let readLength = min(fileSize, tailLength)
+
+        do {
+            try handle.seek(toOffset: fileSize - readLength)
+        } catch {
+            return false
+        }
+
+        guard let data = try? handle.read(upToCount: Int(readLength)),
+              let content = String(data: data, encoding: .utf8) else { return false }
+
+        var lines = content.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        // When the tail starts mid-line, the first fragment is not valid JSON.
+        if fileSize > readLength, !lines.isEmpty {
+            lines.removeFirst()
+        }
+
+        for line in lines.reversed() {
+            guard let lineData = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                  let type = json["type"] as? String else { continue }
+
+            if type == "user" || type == "assistant" {
+                return false
+            }
+
+            if type == "system",
+               let subtype = json["subtype"] as? String,
+               Self.turnEndSubtypes.contains(subtype) {
+                return true
+            }
+        }
+        return false
+    }
+
     /// Build session file path
     private static func sessionFilePath(sessionId: String, cwd: String) -> String {
         let projectDir = cwd.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ".", with: "-")

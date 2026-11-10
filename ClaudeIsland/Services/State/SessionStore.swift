@@ -36,6 +36,25 @@ actor SessionStore {
     /// Status check interval (3 seconds)
     private let statusCheckIntervalSeconds: UInt64 = 3
 
+    // MARK: - Lifecycle Guards
+
+    /// Sessions that received SessionEnd. Claude Code runs matching hooks in
+    /// parallel, so Stop / PostToolUse / SubagentStop events can arrive *after*
+    /// SessionEnd. Without a tombstone, those late events resurrect a dead
+    /// session (often as `.processing`) and the notch keeps spinning.
+    private var endedSessionIds: [String: Date] = [:]
+
+    /// How long late events are ignored. If hooks keep arriving after this
+    /// window the session is genuinely alive again (e.g. resumed).
+    private let endedTombstoneTTL: TimeInterval = 10
+
+    /// When each session entered `.processing` / `.compacting`.
+    private var activePhaseSince: [String: Date] = [:]
+
+    /// How long an active phase may go without a terminal hook event before
+    /// we reconcile it against the transcript.
+    private let stuckPhaseThreshold: TimeInterval = 45
+
     // MARK: - Published State (for UI)
 
     /// Publisher for session state changes (nonisolated for Combine subscription from any context)
@@ -123,6 +142,30 @@ actor SessionStore {
 
     private func processHookEvent(_ event: HookEvent) async {
         let sessionId = event.sessionId
+
+        // Terminal event first. At shutdown Claude Code fires several hooks in
+        // parallel, so their arrival order is not guaranteed.
+        if event.status == "ended" || event.event == "SessionEnd" {
+            sessions.removeValue(forKey: sessionId)
+            endedSessionIds[sessionId] = Date()
+            activePhaseSince.removeValue(forKey: sessionId)
+            cancelPendingSync(sessionId: sessionId)
+            return
+        }
+
+        // Ignore late hooks for an already-ended session, but let a genuine new
+        // session (SessionStart / a new user prompt) lift the tombstone.
+        let isFreshActivity = event.event == "SessionStart" || event.event == "UserPromptSubmit"
+        if isFreshActivity {
+            endedSessionIds.removeValue(forKey: sessionId)
+        } else if let endedAt = endedSessionIds[sessionId] {
+            if Date().timeIntervalSince(endedAt) < endedTombstoneTTL {
+                Self.logger.info("Ignoring late \(event.event, privacy: .public) for ended session \(sessionId.prefix(8), privacy: .public)")
+                return
+            }
+            endedSessionIds.removeValue(forKey: sessionId)
+        }
+
         let isNewSession = sessions[sessionId] == nil
         var session = sessions[sessionId] ?? createSession(from: event)
 
@@ -141,15 +184,18 @@ actor SessionStore {
         }
         session.lastActivity = Date()
 
-        if event.status == "ended" {
-            sessions.removeValue(forKey: sessionId)
-            cancelPendingSync(sessionId: sessionId)
-            return
-        }
-
         let newPhase = event.determinePhase()
 
         if session.phase.canTransition(to: newPhase) {
+            if session.phase != newPhase {
+                if newPhase.isActive {
+                    if activePhaseSince[sessionId] == nil {
+                        activePhaseSince[sessionId] = Date()
+                    }
+                } else {
+                    activePhaseSince.removeValue(forKey: sessionId)
+                }
+            }
             session.phase = newPhase
         } else {
             Self.logger.debug("Invalid transition: \(String(describing: session.phase), privacy: .public) -> \(String(describing: newPhase), privacy: .public), ignoring")
@@ -927,6 +973,8 @@ actor SessionStore {
 
     private func processSessionEnd(sessionId: String) async {
         sessions.removeValue(forKey: sessionId)
+        endedSessionIds[sessionId] = Date()
+        activePhaseSince.removeValue(forKey: sessionId)
         cancelPendingSync(sessionId: sessionId)
     }
 
@@ -1069,12 +1117,14 @@ actor SessionStore {
     }
 
     /// Recheck status of all active sessions
-    private func recheckAllSessions() {
+    private func recheckAllSessions() async {
         var removedSession = false
+        var stuckSessionIds: [String] = []
 
         for (sessionId, session) in Array(sessions) {
             if session.phase == .ended {
                 sessions.removeValue(forKey: sessionId)
+                activePhaseSince.removeValue(forKey: sessionId)
                 cancelPendingSync(sessionId: sessionId)
                 removedSession = true
                 continue
@@ -1085,10 +1135,20 @@ actor SessionStore {
                 if !isRunning {
                     Self.logger.info("Process \(pid) no longer running, ending session \(sessionId.prefix(8))")
                     sessions.removeValue(forKey: sessionId)
+                    activePhaseSince.removeValue(forKey: sessionId)
                     cancelPendingSync(sessionId: sessionId)
                     removedSession = true
                     continue
                 }
+            }
+
+            // A phase stuck in processing/compacting is the main "still active"
+            // symptom: Stop / PostCompact / SessionEnd hooks can be dropped, and
+            // Claude Code's session recap is not a hook event at all.
+            if session.phase.isActive,
+               let since = activePhaseSince[sessionId],
+               Date().timeIntervalSince(since) > stuckPhaseThreshold {
+                stuckSessionIds.append(sessionId)
             }
 
             let needsSync: Bool
@@ -1106,6 +1166,43 @@ actor SessionStore {
         if removedSession {
             publishState()
         }
+
+        for sessionId in stuckSessionIds {
+            await reconcileStuckPhase(sessionId: sessionId)
+        }
+    }
+
+    /// Reconcile a long-running active phase against the transcript.
+    ///
+    /// Modern Claude Code writes explicit turn-end markers to JSONL —
+    /// `stop_hook_summary`, `turn_duration`, and the `away_summary` session
+    /// recap shown in the terminal. None of these are hook events, so if the
+    /// terminal Stop / PostCompact / SessionEnd frame was lost, they are the
+    /// only reliable evidence that the turn is actually over.
+    private func reconcileStuckPhase(sessionId: String) async {
+        guard let session = sessions[sessionId],
+              session.phase.isActive,
+              let since = activePhaseSince[sessionId],
+              Date().timeIntervalSince(since) > stuckPhaseThreshold else { return }
+
+        let turnEnded = await ConversationParser.shared.hasTurnEnded(
+            sessionId: sessionId,
+            cwd: session.cwd
+        )
+
+        // Actor reentrancy: a hook may have arrived while we read the file.
+        guard var current = sessions[sessionId],
+              current.phase.isActive,
+              let currentSince = activePhaseSince[sessionId],
+              Date().timeIntervalSince(currentSince) > stuckPhaseThreshold,
+              turnEnded else { return }
+
+        Self.logger.info("Turn already finished for \(sessionId.prefix(8), privacy: .public), clearing stuck \(String(describing: current.phase), privacy: .public) phase")
+        current.phase = current.phase.canTransition(to: .waitingForInput) ? .waitingForInput : .idle
+        current.lastActivity = Date()
+        sessions[sessionId] = current
+        activePhaseSince.removeValue(forKey: sessionId)
+        publishState()
     }
 
     /// Check if a process is still running

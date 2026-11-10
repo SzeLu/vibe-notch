@@ -45,6 +45,12 @@ struct HookInstaller {
         let withMatcher: [[String: Any]] = [["matcher": "*", "hooks": hookEntry]]
         let withMatcherAndTimeout: [[String: Any]] = [["matcher": "*", "hooks": hookEntryWithTimeout]]
         let withoutMatcher: [[String: Any]] = [["hooks": hookEntry]]
+        // Claude Code gives SessionEnd hooks a shared 1.5s budget and kills
+        // anything over it. Declaring an explicit timeout raises that budget,
+        // so the final "ended" event is not dropped while the process exits.
+        let sessionEndConfig: [[String: Any]] = [
+            ["hooks": [["type": "command", "command": command, "timeout": 10]]]
+        ]
         let preCompactConfig: [[String: Any]] = [
             ["matcher": "auto", "hooks": hookEntry],
             ["matcher": "manual", "hooks": hookEntry]
@@ -78,6 +84,7 @@ struct HookInstaller {
             withMatcher: withMatcher,
             withMatcherAndTimeout: withMatcherAndTimeout,
             withoutMatcher: withoutMatcher,
+            sessionEndConfig: sessionEndConfig,
             preCompactConfig: preCompactConfig
         )
 
@@ -111,24 +118,111 @@ struct HookInstaller {
         }
     }
 
-    /// Runs `claude --version` and parses the result. Returns nil on any
-    /// failure (binary not found, non-zero exit, unparseable output).
+    /// Resolve the installed Claude Code version.
+    ///
+    /// A GUI app inherits a very short PATH, so a `claude` installed through
+    /// nvm / volta / mise is invisible if we only probe a few hard-coded paths.
+    /// When probing fails we fall back to the baseline hook set, which omits
+    /// PostCompact / StopFailure / PermissionDenied — that leaves the notch
+    /// stuck in `.compacting` or `.processing` forever on modern Claude Code.
+    ///
+    /// Every JSONL transcript carries a `version` field, so prefer reading the
+    /// most recent one; it is both faster and far more reliable than spawning
+    /// binaries from a sandboxed menu bar app.
     static func detectClaudeCodeVersion() -> ClaudeCodeVersion? {
-        // Claude Code can land in a few typical spots; try each until we find one
+        if let version = versionFromRecentTranscript() { return version }
+
+        for claudePath in claudeBinaryCandidates() {
+            guard let output = runClaudeVersion(at: claudePath),
+                  let version = parseClaudeCodeVersion(from: output) else { continue }
+            return version
+        }
+        return nil
+    }
+
+    /// Read `version` from the newest session transcripts.
+    private static func versionFromRecentTranscript() -> ClaudeCodeVersion? {
         let fm = FileManager.default
-        let candidates = [
-            "/usr/local/bin/claude",
-            "/opt/homebrew/bin/claude",
-            NSHomeDirectory() + "/.claude/local/claude",
-            NSHomeDirectory() + "/.local/bin/claude",
-            "/usr/bin/claude",
-        ]
-        guard let claudePath = candidates.first(where: { fm.fileExists(atPath: $0) }) else {
-            return nil
+        guard let dirs = try? fm.contentsOfDirectory(
+            at: ClaudePaths.projectsDir,
+            includingPropertiesForKeys: nil,
+            options: .skipsHiddenFiles
+        ) else { return nil }
+
+        var transcripts: [(url: URL, date: Date)] = []
+        for dir in dirs {
+            guard let files = try? fm.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: .skipsHiddenFiles
+            ) else { continue }
+
+            for file in files where file.pathExtension == "jsonl" && !file.lastPathComponent.hasPrefix("agent-") {
+                let date = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+                transcripts.append((file, date))
+            }
         }
 
+        transcripts.sort { $0.date > $1.date }
+
+        for (file, _) in transcripts.prefix(5) {
+            guard let handle = try? FileHandle(forReadingFrom: file) else { continue }
+            defer { try? handle.close() }
+            guard let data = try? handle.read(upToCount: 16_384),
+                  let text = String(data: data, encoding: .utf8) else { continue }
+
+            for line in text.components(separatedBy: .newlines) where !line.isEmpty {
+                guard let lineData = line.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                      let value = json["version"] as? String,
+                      let version = parseClaudeCodeVersion(from: value) else { continue }
+                return version
+            }
+        }
+        return nil
+    }
+
+    /// Executable `claude` candidates, including version-manager installs that
+    /// are not on a GUI app's PATH.
+    private static func claudeBinaryCandidates() -> [String] {
+        let fm = FileManager.default
+        let home = NSHomeDirectory()
+        var paths: [String] = []
+
+        // The app defines its own `ProcessInfo` struct (process tree model),
+        // so this must be qualified with the Foundation module.
+        let envPath = Foundation.ProcessInfo.processInfo.environment["PATH"] ?? ""
+        for dir in envPath.split(separator: ":") {
+            paths.append(String(dir) + "/claude")
+        }
+
+        // nvm keeps every Node version under ~/.nvm/versions/node/<version>/bin
+        let nvmRoot = home + "/.nvm/versions/node"
+        if let versions = try? fm.contentsOfDirectory(atPath: nvmRoot) {
+            for version in versions.sorted().reversed() {
+                paths.append(nvmRoot + "/" + version + "/bin/claude")
+            }
+        }
+
+        paths.append(contentsOf: [
+            home + "/.volta/bin/claude",
+            home + "/.bun/bin/claude",
+            home + "/.asdf/shims/claude",
+            home + "/.local/share/mise/shims/claude",
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude",
+            home + "/.claude/local/claude",
+            home + "/.local/bin/claude",
+            "/usr/bin/claude",
+        ])
+
+        return paths.filter { fm.isExecutableFile(atPath: $0) }
+    }
+
+    /// Runs `claude --version` at a given path. Returns nil on any failure.
+    private static func runClaudeVersion(at path: String) -> String? {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: claudePath)
+        process.executableURL = URL(fileURLWithPath: path)
         process.arguments = ["--version"]
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -139,8 +233,7 @@ struct HookInstaller {
             process.waitUntilExit()
             guard process.terminationStatus == 0 else { return nil }
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8) else { return nil }
-            return parseClaudeCodeVersion(from: output)
+            return String(data: data, encoding: .utf8)
         } catch {
             return nil
         }
@@ -171,6 +264,7 @@ struct HookInstaller {
         withMatcher: [[String: Any]],
         withMatcherAndTimeout: [[String: Any]],
         withoutMatcher: [[String: Any]],
+        sessionEndConfig: [[String: Any]],
         preCompactConfig: [[String: Any]]
     ) -> [(String, [[String: Any]])] {
         // Baseline — present in every Claude Code version that supports hooks
@@ -183,7 +277,7 @@ struct HookInstaller {
             ("Stop", withoutMatcher),
             ("SubagentStop", withoutMatcher),
             ("SessionStart", withoutMatcher),
-            ("SessionEnd", withoutMatcher),
+            ("SessionEnd", sessionEndConfig),
             ("PreCompact", preCompactConfig),
         ]
 
