@@ -75,7 +75,9 @@ struct ClaudeInstancesView: View {
                         onChat: { openChat(session) },
                         onArchive: { archiveSession(session) },
                         onApprove: { approveSession(session) },
-                        onReject: { rejectSession(session) }
+                        onReject: { rejectSession(session) },
+                        onShell: { viewModel.showShell(sessionId: session.sessionId) },
+                        onMonitor: { viewModel.showMonitor(sessionId: session.sessionId) }
                     )
                     .id(session.stableId)
                 }
@@ -125,6 +127,8 @@ struct InstanceRow: View {
     let onArchive: () -> Void
     let onApprove: () -> Void
     let onReject: () -> Void
+    let onShell: () -> Void
+    let onMonitor: () -> Void
 
     @State private var isHovered = false
     @State private var spinnerPhase = 0
@@ -302,6 +306,16 @@ struct InstanceRow: View {
                         IconButton(icon: "bubble.left") {
                             onChat()
                         }
+                    }
+
+                    // Shell commands this session has run
+                    IconButton(icon: "terminal") {
+                        onShell()
+                    }
+
+                    // Background tasks this session has spawned
+                    IconButton(icon: "timer") {
+                        onMonitor()
                     }
 
                     // Focus icon (only for tmux instances with yabai)

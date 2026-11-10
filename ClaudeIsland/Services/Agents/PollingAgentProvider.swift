@@ -62,10 +62,28 @@ class PollingAgentProvider: AgentProvider, @unchecked Sendable {
     private func refresh() {
         let stable = stabilize(discover())
         let agentKind = kind
+        let targets = shellMonitorTargets()
+        let blobs = shellMonitorBlobs()
         Task {
             await SessionStore.shared.applyAgentSnapshots(stable, from: agentKind)
+            if !targets.isEmpty {
+                await SessionStore.shared.scanShellMonitor(targets: targets)
+            }
+            if !blobs.isEmpty {
+                await SessionStore.shared.scanShellMonitor(blobs: blobs)
+            }
         }
     }
+
+    /// Override in a provider to point at transcript files that should be
+    /// scanned for shell commands / background tasks. Best-effort: if the
+    /// agent's transcript format is not recognised, the scan simply yields
+    /// nothing and the rest of the app is unaffected.
+    func shellMonitorTargets() -> [(sessionId: String, fileURL: URL)] { [] }
+
+    /// Override in a provider whose transcript lives in a database (OpenCode):
+    /// return already-decoded JSONL-style blobs per session.
+    func shellMonitorBlobs() -> [(sessionId: String, data: Data)] { [] }
 
     /// Debounce the busy/idle signal.
     ///
@@ -168,6 +186,18 @@ class PollingAgentProvider: AgentProvider, @unchecked Sendable {
             if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
                let date = attrs[.modificationDate] as? Date {
                 return date
+            }
+        }
+        return nil
+    }
+
+    /// Resolve a transcript file URL by name under `<root>/<subdir>/<name>`.
+    func fileURL(named filename: String, under root: String) -> URL? {
+        guard let dirs = try? FileManager.default.contentsOfDirectory(atPath: root) else { return nil }
+        for dir in dirs {
+            let path = root + "/" + dir + "/" + filename
+            if FileManager.default.fileExists(atPath: path) {
+                return URL(fileURLWithPath: path)
             }
         }
         return nil

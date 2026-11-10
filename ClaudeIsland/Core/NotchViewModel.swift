@@ -27,12 +27,16 @@ enum NotchContentType: Equatable {
     case instances
     case menu
     case chat(SessionState)
+    case shell
+    case monitor
 
     var id: String {
         switch self {
         case .instances: return "instances"
         case .menu: return "menu"
         case .chat(let session): return "chat-\(session.sessionId)"
+        case .shell: return "shell"
+        case .monitor: return "monitor"
         }
     }
 }
@@ -45,6 +49,12 @@ class NotchViewModel: ObservableObject {
     @Published var openReason: NotchOpenReason = .unknown
     @Published var contentType: NotchContentType = .instances
     @Published var isHovering: Bool = false
+
+    /// Optional session scope for the Shell / Monitor panels.
+    /// `nil` means "all sessions" (opened from the header); a session id means
+    /// the panel was opened from that session's row.
+    @Published var shellSessionFilter: String?
+    @Published var monitorSessionFilter: String?
 
     // MARK: - Dependencies
 
@@ -86,6 +96,11 @@ class NotchViewModel: ObservableObject {
             return CGSize(
                 width: min(screenRect.width * 0.4, 480),
                 height: 320
+            )
+        case .shell, .monitor:
+            return CGSize(
+                width: min(screenRect.width * 0.45, 520),
+                height: 460
             )
         }
     }
@@ -286,6 +301,38 @@ class NotchViewModel: ObservableObject {
             return
         }
         contentType = .chat(session)
+    }
+
+    /// Toggle the global Shell panel (header button — all sessions).
+    func toggleShell() {
+        if contentType == .shell {
+            contentType = .instances
+        } else {
+            shellSessionFilter = nil
+            contentType = .shell
+        }
+    }
+
+    /// Open the Shell panel, optionally scoped to one session (row button).
+    func showShell(sessionId: String?) {
+        shellSessionFilter = sessionId
+        contentType = .shell
+    }
+
+    /// Toggle the global Monitor panel (header button — all sessions).
+    func toggleMonitor() {
+        if contentType == .monitor {
+            contentType = .instances
+        } else {
+            monitorSessionFilter = nil
+            contentType = .monitor
+        }
+    }
+
+    /// Open the Monitor panel, optionally scoped to one session (row button).
+    func showMonitor(sessionId: String?) {
+        monitorSessionFilter = sessionId
+        contentType = .monitor
     }
 
     /// Go back to instances list and clear saved chat state

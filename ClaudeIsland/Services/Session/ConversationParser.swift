@@ -576,6 +576,12 @@ actor ConversationParser {
         return ClaudePaths.projectsDir.path + "/" + projectDir + "/" + sessionId + ".jsonl"
     }
 
+    /// Public accessor for the transcript file of a Claude Code session.
+    /// Used by the Shell / Monitor scanner (SessionStore).
+    nonisolated static func transcriptFilePath(sessionId: String, cwd: String) -> String {
+        sessionFilePath(sessionId: sessionId, cwd: cwd)
+    }
+
     /// Build subagent JSONL file path.
     ///
     /// Current Claude Code nests subagent files under the parent session:

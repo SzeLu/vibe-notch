@@ -50,6 +50,14 @@ struct SessionState: Equatable, Identifiable, Sendable {
     /// State for Task tools and their nested subagent tools
     var subagentState: SubagentState
 
+    // MARK: - Shell & Monitor State
+
+    /// Shell commands this agent has executed (Bash / PowerShell / ...)
+    var shellCommands: [ShellCommandRecord]
+
+    /// Background / detached tasks this agent has spawned
+    var backgroundTasks: [BackgroundTaskRecord]
+
     // MARK: - Conversation Info (from JSONL parsing)
 
     var conversationInfo: ConversationInfo
@@ -83,6 +91,8 @@ struct SessionState: Equatable, Identifiable, Sendable {
         chatItems: [ChatHistoryItem] = [],
         toolTracker: ToolTracker = ToolTracker(),
         subagentState: SubagentState = SubagentState(),
+        shellCommands: [ShellCommandRecord] = [],
+        backgroundTasks: [BackgroundTaskRecord] = [],
         conversationInfo: ConversationInfo = ConversationInfo(
             summary: nil, lastMessage: nil, lastMessageRole: nil,
             lastToolName: nil, firstUserMessage: nil, lastUserMessageDate: nil
@@ -102,6 +112,8 @@ struct SessionState: Equatable, Identifiable, Sendable {
         self.chatItems = chatItems
         self.toolTracker = toolTracker
         self.subagentState = subagentState
+        self.shellCommands = shellCommands
+        self.backgroundTasks = backgroundTasks
         self.conversationInfo = conversationInfo
         self.needsClearReconciliation = needsClearReconciliation
         self.lastActivity = lastActivity

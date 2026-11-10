@@ -76,4 +76,40 @@ final class OpenCodeProvider: PollingAgentProvider {
         }
         return id
     }
+
+    /// Feed OpenCode's SQLite message store to the Shell / Monitor scanner.
+    /// Each `session_message.data` is a JSON object; we join recent rows per
+    /// session into a newline-delimited blob the scanner can parse
+    /// (content[].type == "tool", name "shell", state.input.command, ...).
+    override func shellMonitorBlobs() -> [(sessionId: String, data: Data)] {
+        let dbPath = Self.databasePath()
+        let cutoff = Int(Date().addingTimeInterval(-30 * 60).timeIntervalSince1970 * 1000)
+        let sql = """
+        select m.session_id as sid, m.data as data
+        from session_message m
+        join session_v2 s on s.id = m.session_id
+        where s.time_updated > \(cutoff)
+        order by m.session_id, m.seq;
+        """
+
+        let rows = sqliteRows(dbPath: dbPath, sql: sql)
+        guard !rows.isEmpty else { return [] }
+
+        var grouped: [String: [String]] = [:]
+        for row in rows {
+            guard let sid = row["sid"] as? String,
+                  let data = row["data"] as? String else { continue }
+            grouped[sid, default: []].append(data)
+        }
+
+        return grouped.map { (key, values) -> (sessionId: String, data: Data) in
+            var joined = values.joined(separator: "\n")
+            // Bound the blob: reasoning text can make this large. Keep the most
+            // recent bytes (rows are ordered by seq ascending).
+            if joined.utf8.count > 4_000_000 {
+                joined = String(decoding: Array(joined.utf8).suffix(4_000_000), as: UTF8.self)
+            }
+            return (kind.sessionKeyPrefix + key, Data(joined.utf8))
+        }
+    }
 }

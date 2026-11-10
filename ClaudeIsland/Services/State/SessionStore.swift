@@ -33,6 +33,10 @@ actor SessionStore {
     /// Periodic status check task
     private var statusCheckTask: Task<Void, Never>?
 
+    /// Last transcript modification date we scanned for shell/monitor data,
+    /// keyed by sessionId. Used to avoid re-scanning unchanged files.
+    private var shellScanModDates: [String: Date] = [:]
+
     /// Status check interval (3 seconds)
     private let statusCheckIntervalSeconds: UInt64 = 3
 
@@ -133,6 +137,14 @@ actor SessionStore {
         case .agentFileUpdated:
             // No longer used - subagent tools are populated from JSONL completion
             break
+
+        // MARK: - Shell & Monitor Events
+
+        case .shellCommand(let record):
+            processShellCommand(record)
+
+        case .backgroundTask(let record):
+            processBackgroundTask(record)
         }
 
         publishState()
@@ -239,6 +251,25 @@ actor SessionStore {
             if let toolUseId = event.toolUseId, let toolName = event.tool {
                 session.toolTracker.startTool(id: toolUseId, name: toolName)
 
+                // Record shell commands (Bash / PowerShell / ...) for the Shell panel.
+                if ShellMonitorScanner.isShellTool(toolName),
+                   let command = event.toolInput?["command"]?.value as? String,
+                   !command.isEmpty {
+                    let record = ShellCommandRecord(
+                        id: toolUseId,
+                        sessionId: session.sessionId,
+                        agentKind: session.source,
+                        command: command,
+                        toolName: toolName,
+                        startedAt: Date(),
+                        finishedAt: nil,
+                        status: .running,
+                        exitCode: nil,
+                        output: nil
+                    )
+                    upsertShellCommand(record, in: &session)
+                }
+
                 // Skip creating top-level placeholder for subagent tools
                 // They'll appear under their parent Task instead
                 let isSubagentTool = session.subagentState.hasActiveSubagent && !ToolCallItem.isSubagentContainerName(toolName)
@@ -281,6 +312,15 @@ actor SessionStore {
         case "PostToolUse":
             if let toolUseId = event.toolUseId {
                 session.toolTracker.completeTool(id: toolUseId, success: true)
+
+                // Mark the shell command complete. Background tasks keep running
+                // until the JSONL scan detects their completion marker.
+                if let idx = session.shellCommands.firstIndex(where: { $0.id == toolUseId }),
+                   session.shellCommands[idx].status == .running {
+                    session.shellCommands[idx].status = .success
+                    session.shellCommands[idx].finishedAt = Date()
+                }
+
                 // Update chatItem status - tool completed (possibly approved via terminal)
                 // Only update if still waiting for approval or running
                 for i in 0..<session.chatItems.count {
@@ -1033,6 +1073,198 @@ actor SessionStore {
         }
     }
 
+    // MARK: - Shell & Monitor Processing
+
+    /// Upsert a shell command into a session. Records are keyed by id so the
+    /// same command is updated (running -> success/error) instead of duplicated.
+    private func upsertShellCommand(_ record: ShellCommandRecord, in session: inout SessionState) {
+        if let idx = session.shellCommands.firstIndex(where: { $0.id == record.id }) {
+            var existing = session.shellCommands[idx]
+            // Only terminal updates may overwrite a status; never regress.
+            if existing.status == .running || record.status != .running {
+                existing.status = record.status
+            }
+            existing.finishedAt = record.finishedAt ?? existing.finishedAt
+            existing.exitCode = record.exitCode ?? existing.exitCode
+            existing.output = record.output ?? existing.output
+            session.shellCommands[idx] = existing
+        } else {
+            session.shellCommands.append(record)
+        }
+
+        // Bound memory: keep the most recent 500 commands.
+        if session.shellCommands.count > 500 {
+            session.shellCommands = Array(session.shellCommands.suffix(500))
+        }
+    }
+
+    /// Upsert a background task. Returns true exactly once when the task
+    /// transitions from running to a terminal state, so the caller can notify.
+    @discardableResult
+    private func upsertBackgroundTask(_ record: BackgroundTaskRecord, in session: inout SessionState) -> Bool {
+        var didComplete = false
+
+        if let idx = session.backgroundTasks.firstIndex(where: { $0.id == record.id }) {
+            var existing = session.backgroundTasks[idx]
+            let wasRunning = existing.status == .running
+            if existing.status == .running || record.status != .running {
+                existing.status = record.status
+            }
+            existing.finishedAt = record.finishedAt ?? existing.finishedAt
+            existing.output = record.output ?? existing.output
+
+            if wasRunning && existing.status != .running && !existing.notified {
+                existing.notified = true
+                didComplete = true
+            }
+            session.backgroundTasks[idx] = existing
+        } else {
+            var newRecord = record
+            if newRecord.status != .running && !newRecord.notified {
+                newRecord.notified = true
+                didComplete = true
+            }
+            session.backgroundTasks.append(newRecord)
+        }
+
+        if session.backgroundTasks.count > 100 {
+            session.backgroundTasks = Array(session.backgroundTasks.suffix(100))
+        }
+        return didComplete
+    }
+
+    private func processShellCommand(_ record: ShellCommandRecord) {
+        guard var session = sessions[record.sessionId] else { return }
+        upsertShellCommand(record, in: &session)
+        sessions[record.sessionId] = session
+    }
+
+    private func processBackgroundTask(_ record: BackgroundTaskRecord) {
+        guard var session = sessions[record.sessionId] else { return }
+        let didComplete = upsertBackgroundTask(record, in: &session)
+        sessions[record.sessionId] = session
+        if didComplete {
+            notifyBackgroundTaskCompleted(sessionId: record.sessionId, record: record)
+        }
+    }
+
+    /// Bounce + sound on the notch when a background task finishes.
+    private nonisolated func notifyBackgroundTaskCompleted(sessionId: String, record: BackgroundTaskRecord) {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .claudeIslandBackgroundTaskCompleted,
+                object: nil,
+                userInfo: [
+                    "sessionId": sessionId,
+                    "label": record.label,
+                    "status": record.status.rawValue,
+                ]
+            )
+        }
+    }
+
+    // MARK: - Shell & Monitor Transcript Scanning
+
+    /// Scan a Claude Code transcript for shell commands and background tasks.
+    /// Mtime-gated, so it is cheap when nothing changed. Doubles as backfill
+    /// (past commands) and completion detection (background task finished).
+    private func scanClaudeShellMonitor(sessionId: String, cwd: String) async {
+        guard sessions[sessionId]?.source.usesClaudeTranscript == true else { return }
+
+        let path = ConversationParser.transcriptFilePath(sessionId: sessionId, cwd: cwd)
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let modDate = attrs[.modificationDate] as? Date else { return }
+        // Guard against pathological transcript sizes (avoid re-reading huge
+        // files every few seconds while an agent is busy).
+        if let size = attrs[.size] as? Int, size > 32_000_000 { return }
+
+        if let last = shellScanModDates[sessionId], last == modDate { return }
+        shellScanModDates[sessionId] = modDate
+
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              var session = sessions[sessionId] else { return }
+
+        let result = ShellMonitorScanner.scan(data: data, sessionId: sessionId, agentKind: .claudeCode)
+
+        for record in result.shellCommands {
+            upsertShellCommand(record, in: &session)
+        }
+        for record in result.backgroundTasks {
+            if upsertBackgroundTask(record, in: &session) {
+                notifyBackgroundTaskCompleted(sessionId: sessionId, record: record)
+            }
+        }
+        if session != sessions[sessionId] {
+            sessions[sessionId] = session
+            publishState()
+        }
+    }
+
+    /// Scan transcripts supplied by a polling provider (best-effort). Used by
+    /// WorkBuddy / OpenCode to surface shell + background activity.
+    func scanShellMonitor(targets: [(sessionId: String, fileURL: URL)]) async {
+        var changed = false
+        for target in targets {
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: target.fileURL.path),
+                  let modDate = attrs[.modificationDate] as? Date,
+                  let existing = sessions[target.sessionId] else { continue }
+            if let size = attrs[.size] as? Int, size > 32_000_000 { continue }
+
+            if let last = shellScanModDates[target.sessionId], last == modDate { continue }
+            shellScanModDates[target.sessionId] = modDate
+
+            guard let data = try? Data(contentsOf: target.fileURL) else { continue }
+            let result = ShellMonitorScanner.scan(
+                data: data,
+                sessionId: target.sessionId,
+                agentKind: existing.source
+            )
+
+            var session = existing
+            for record in result.shellCommands {
+                upsertShellCommand(record, in: &session)
+            }
+            for record in result.backgroundTasks {
+                if upsertBackgroundTask(record, in: &session) {
+                    notifyBackgroundTaskCompleted(sessionId: target.sessionId, record: record)
+                }
+            }
+            if session != sessions[target.sessionId] {
+                sessions[target.sessionId] = session
+                changed = true
+            }
+        }
+        if changed { publishState() }
+    }
+
+    /// Ingest shell/monitor data from providers that supply already-decoded
+    /// JSONL-style blobs (e.g. OpenCode reads its SQLite message store).
+    /// Idempotent; only republishes when the session actually changed.
+    func scanShellMonitor(blobs: [(sessionId: String, data: Data)]) async {
+        var changed = false
+        for blob in blobs {
+            guard var session = sessions[blob.sessionId] else { continue }
+            let result = ShellMonitorScanner.scan(
+                data: blob.data,
+                sessionId: blob.sessionId,
+                agentKind: session.source
+            )
+            for record in result.shellCommands {
+                upsertShellCommand(record, in: &session)
+            }
+            for record in result.backgroundTasks {
+                if upsertBackgroundTask(record, in: &session) {
+                    notifyBackgroundTaskCompleted(sessionId: blob.sessionId, record: record)
+                }
+            }
+            if session != sessions[blob.sessionId] {
+                sessions[blob.sessionId] = session
+                changed = true
+            }
+        }
+        if changed { publishState() }
+    }
+
     // MARK: - History Loading
 
     private func loadHistoryFromFile(sessionId: String, cwd: String) async {
@@ -1218,6 +1450,12 @@ actor SessionStore {
             }
             if needsSync {
                 scheduleFileSync(sessionId: sessionId, cwd: session.cwd)
+            }
+
+            // Keep shell / background-task data fresh for Claude Code sessions
+            // regardless of phase (mtime-gated, so this is cheap when idle).
+            if session.source.usesClaudeTranscript {
+                await scanClaudeShellMonitor(sessionId: sessionId, cwd: session.cwd)
             }
         }
 

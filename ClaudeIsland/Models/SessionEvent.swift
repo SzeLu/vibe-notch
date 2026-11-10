@@ -75,6 +75,14 @@ enum SessionEvent: Sendable {
 
     /// History load completed
     case historyLoaded(sessionId: String, messages: [ChatMessage], completedTools: Set<String>, toolResults: [String: ConversationParser.ToolResult], structuredResults: [String: ToolResultData], conversationInfo: ConversationInfo)
+
+    // MARK: - Shell & Monitor Events
+
+    /// An agent executed a shell command (Bash / PowerShell / ...)
+    case shellCommand(ShellCommandRecord)
+
+    /// An agent spawned / updated a background (detached) task
+    case backgroundTask(BackgroundTaskRecord)
 }
 
 /// Payload for file update events
@@ -215,6 +223,10 @@ extension SessionEvent: CustomStringConvertible {
             return "subagentStopped(session: \(sessionId.prefix(8)), task: \(taskToolId.prefix(12)))"
         case .agentFileUpdated(let sessionId, let taskToolId, let tools):
             return "agentFileUpdated(session: \(sessionId.prefix(8)), task: \(taskToolId.prefix(12)), tools: \(tools.count))"
+        case .shellCommand(let record):
+            return "shellCommand(session: \(record.sessionId.prefix(8)), tool: \(record.toolName), status: \(record.status))"
+        case .backgroundTask(let record):
+            return "backgroundTask(session: \(record.sessionId.prefix(8)), status: \(record.status), notified: \(record.notified))"
         }
     }
 }

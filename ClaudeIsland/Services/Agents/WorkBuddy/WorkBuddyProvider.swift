@@ -130,4 +130,30 @@ final class WorkBuddyProvider: PollingAgentProvider {
         let sql = "select case when length(coalesce(custom_title,'')) > 0 then custom_title else title end as title, status, model, last_activity_at from sessions where id = '\(escaped)' limit 1;"
         return sqliteRows(dbPath: dbPath, sql: sql).first
     }
+
+    /// Point the Shell / Monitor scanner at WorkBuddy transcripts. Best-effort:
+    /// if the transcript format differs from Claude's JSONL, the scan is a no-op.
+    override func shellMonitorTargets() -> [(sessionId: String, fileURL: URL)] {
+        let home = NSHomeDirectory()
+        let sessionsDir = home + "/.workbuddy-ai/sessions"
+        let projectsRoot = home + "/.workbuddy-ai/projects"
+
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: sessionsDir) else {
+            return []
+        }
+
+        var targets: [(String, URL)] = []
+        for name in files where name.hasSuffix(".json") {
+            let path = sessionsDir + "/" + name
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let rawId = json["sessionId"] as? String, !rawId.isEmpty,
+                  (json["kind"] as? String) != "prewarm" else { continue }
+
+            if let url = fileURL(named: rawId + ".jsonl", under: projectsRoot) {
+                targets.append((kind.sessionKeyPrefix + rawId, url))
+            }
+        }
+        return targets
+    }
 }

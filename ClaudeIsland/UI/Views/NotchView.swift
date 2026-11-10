@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import CoreGraphics
 import SwiftUI
 
@@ -206,6 +207,9 @@ struct NotchView: View {
             handleProcessingChange()
             handleWaitingForInputChange(instances)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .claudeIslandBackgroundTaskCompleted)) { note in
+            handleBackgroundTaskCompleted(note)
+        }
     }
 
     // MARK: - Notch Layout
@@ -317,6 +321,36 @@ struct NotchView: View {
 
             Spacer()
 
+            // Shell panel toggle (commands agents have run)
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    viewModel.toggleShell()
+                }
+            } label: {
+                Image(systemName: viewModel.contentType == .shell ? "chevron.left" : "terminal")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(viewModel.contentType == .shell ? .white.opacity(0.7) : .white.opacity(0.4))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Shell commands")
+
+            // Monitor panel toggle (background tasks)
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    viewModel.toggleMonitor()
+                }
+            } label: {
+                Image(systemName: viewModel.contentType == .monitor ? "chevron.left" : "timer")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(viewModel.contentType == .monitor ? .white.opacity(0.7) : .white.opacity(0.4))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Background tasks")
+
             // Menu toggle
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -372,6 +406,10 @@ struct NotchView: View {
                 // Keyed on sessionId only (not the whole SessionState) so
                 // per-event updates still reuse the view.
                 .id(session.sessionId)
+            case .shell:
+                ShellView(sessionMonitor: sessionMonitor, viewModel: viewModel)
+            case .monitor:
+                MonitorView(sessionMonitor: sessionMonitor, viewModel: viewModel)
             }
         }
         .frame(width: notchSize.width - 24) // Fixed width to prevent text reflow
@@ -530,5 +568,23 @@ struct NotchView: View {
         }
 
         return false
+    }
+
+    // MARK: - Background Task Notifications
+
+    /// An agent's background task finished — bounce the notch and (if the
+    /// terminal isn't focused) play the completion sound.
+    private func handleBackgroundTaskCompleted(_ note: Notification) {
+        DispatchQueue.main.async {
+            isBouncing = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                isBouncing = false
+            }
+        }
+
+        if !TerminalVisibilityDetector.isTerminalVisibleOnCurrentSpace(),
+           let soundName = AppSettings.notificationSound.soundName {
+            NSSound(named: soundName)?.play()
+        }
     }
 }
