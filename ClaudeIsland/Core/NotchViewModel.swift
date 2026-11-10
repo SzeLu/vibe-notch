@@ -223,10 +223,14 @@ class NotchViewModel: ObservableObject {
     private func repostClickAt(_ location: CGPoint) {
         // Small delay to let the window's ignoresMouseEvents update
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            // Convert to CGEvent coordinate system (screen coordinates with Y from top-left)
-            guard let screen = NSScreen.main else { return }
-            let screenHeight = screen.frame.height
-            let cgPoint = CGPoint(x: location.x, y: screenHeight - location.y)
+            // Convert to CGEvent coordinate system (screen coordinates with Y from top-left).
+            // Flip against the PRIMARY display's height (screens[0]), NOT NSScreen.main:
+            // NSScreen.main is the display holding the key window and may be a secondary
+            // display of a different height, which would offset the re-posted click's Y
+            // and cause it to land on the wrong window (see issue #116).
+            guard let primaryScreen = NSScreen.screens.first else { return }
+            let primaryHeight = primaryScreen.frame.height
+            let cgPoint = CGPoint(x: location.x, y: primaryHeight - location.y)
 
             // Create and post mouse down event
             if let mouseDown = CGEvent(

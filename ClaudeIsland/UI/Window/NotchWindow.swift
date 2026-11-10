@@ -94,10 +94,18 @@ class NotchPanel: NSPanel {
     }
 
     private func repostMouseEvent(_ event: NSEvent, at screenLocation: NSPoint) {
-        // Convert to CGEvent coordinate system (Y from top of screen)
-        guard let screen = NSScreen.main else { return }
-        let screenHeight = screen.frame.height
-        let cgPoint = CGPoint(x: screenLocation.x, y: screenHeight - screenLocation.y)
+        // Convert to CGEvent coordinate system (Y from top of screen).
+        // The NSScreen global coordinate space is anchored to the PRIMARY
+        // display (screens[0], the one with the menu bar) whose bottom-left
+        // corner is (0,0). Flipping against NSScreen.main is wrong here:
+        // NSScreen.main is the display holding the key window, which on a
+        // multi-monitor setup can be a secondary display of a different height.
+        // That offset makes the re-posted event land at the wrong Y, so the
+        // window under the cursor never receives the mouse-down and a drag
+        // (e.g. moving a TextEdit window) fails on the secondary display.
+        guard let primaryScreen = NSScreen.screens.first else { return }
+        let primaryHeight = primaryScreen.frame.height
+        let cgPoint = CGPoint(x: screenLocation.x, y: primaryHeight - screenLocation.y)
 
         let mouseType: CGEventType
         switch event.type {
