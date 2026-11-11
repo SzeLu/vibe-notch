@@ -24,7 +24,7 @@
 
 ## Features
 
-- **Notch UI** — Animated overlay that expands from the MacBook notch, with a built-in settings menu right inside the panel.
+- **Notch UI** — Animated overlay that expands from the MacBook notch, with a built-in settings menu right inside the panel. Click the notch to open it; hovering only shows a subtle shadow and does **not** auto-expand.
 - **Multi-Agent Monitoring** — Track live sessions from Claude Code, WorkBuddy, and OpenCode side by side, each tagged with a short badge (`WB`, `OC`).
 - **Live Session Monitoring** — See every running agent session, its status (processing / waiting for input / completed), model, and working directory in real time.
 - **Permission Approvals** — Approve or deny Claude Code tool executions directly from the notch — no need to switch back to the terminal.

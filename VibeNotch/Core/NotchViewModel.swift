@@ -17,7 +17,6 @@ enum NotchStatus: Equatable {
 
 enum NotchOpenReason {
     case click
-    case hover
     case notification
     case boot
     case unknown
@@ -48,7 +47,6 @@ class NotchViewModel: ObservableObject {
     @Published var status: NotchStatus = .closed
     @Published var openReason: NotchOpenReason = .unknown
     @Published var contentType: NotchContentType = .instances
-    @Published var isHovering: Bool = false
 
     /// Optional session scope for the Shell / Monitor panels.
     /// `nil` means "all sessions" (opened from the header); a session id means
@@ -115,7 +113,6 @@ class NotchViewModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private let events = EventMonitors.shared
-    private var hoverTimer: DispatchWorkItem?
 
     // MARK: - Initialization
 
@@ -147,13 +144,6 @@ class NotchViewModel: ObservableObject {
     // MARK: - Event Handling
 
     private func setupEventHandlers() {
-        events.mouseLocation
-            .throttle(for: .milliseconds(50), scheduler: DispatchQueue.main, latest: true)
-            .sink { [weak self] location in
-                self?.handleMouseMove(location)
-            }
-            .store(in: &cancellables)
-
         events.mouseDown
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -170,32 +160,6 @@ class NotchViewModel: ObservableObject {
 
     /// The chat session we're viewing (persists across close/open)
     private var currentChatSession: SessionState?
-
-    private func handleMouseMove(_ location: CGPoint) {
-        let inNotch = geometry.isPointInNotch(location)
-        let inOpened = status == .opened && geometry.isPointInOpenedPanel(location, size: openedSize)
-
-        let newHovering = inNotch || inOpened
-
-        // Only update if changed to prevent unnecessary re-renders
-        guard newHovering != isHovering else { return }
-
-        isHovering = newHovering
-
-        // Cancel any pending hover timer
-        hoverTimer?.cancel()
-        hoverTimer = nil
-
-        // Start hover timer to auto-expand after 1 second
-        if isHovering && (status == .closed || status == .popping) {
-            let workItem = DispatchWorkItem { [weak self] in
-                guard let self = self, self.isHovering else { return }
-                self.notchOpen(reason: .hover)
-            }
-            hoverTimer = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
-        }
-    }
 
     private func handleMouseDown() {
         let location = NSEvent.mouseLocation
