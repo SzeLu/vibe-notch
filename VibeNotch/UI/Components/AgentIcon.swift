@@ -5,21 +5,24 @@
 //  Per-provider marks shown next to every session, so the conversation list
 //  tells you at a glance which agent a session belongs to.
 //
-//  WorkBuddy and OpenCode use their official favicons (from workbuddy.ai and
-//  opencode.ai) bundled as asset-catalog imagesets. Claude Code keeps the pixel
-//  crab mascot, drawn as a vector so it stays crisp and tintable.
+//  WorkBuddy, OpenCode and LM Studio use their official favicons (from
+//  workbuddy.ai, opencode.ai and lmstudio.ai/favicon.ico) bundled as
+//  asset-catalog imagesets. The LM Studio 1x/2x assets are the native 16x16
+//  and 32x32 images extracted from the site's .ico, not downscaled artwork.
+//  Claude Code keeps the pixel crab mascot, drawn as a vector so it stays
+//  crisp and tintable.
 //
 
 import SwiftUI
 
 extension AgentKind {
-    /// Provider accent, used by the Claude Code crab chip.
+    /// Provider accent, used by the vector chips (crab / letter fallback).
     var accent: Color {
         switch self {
         case .claudeCode: return Color(red: 0.85, green: 0.47, blue: 0.34)  // #D97757 copper
         case .workBuddy:  return Color(red: 0.49, green: 0.55, blue: 0.97)  // #7C8CF8 violet
         case .openCode:   return Color(red: 0.31, green: 0.82, blue: 0.65)  // #4FD1A5 mint
-        case .lmStudio:   return Color(red: 0.36, green: 0.65, blue: 0.95)  // #5CA6F2 blue
+        case .lmStudio:   return Color(red: 0.416, green: 0.329, blue: 0.855)  // #6A54DA violet
         }
     }
 
@@ -29,7 +32,7 @@ extension AgentKind {
         case .claudeCode: return nil
         case .workBuddy:  return "AgentWorkBuddy"
         case .openCode:   return "AgentOpenCode"
-        case .lmStudio:   return nil
+        case .lmStudio:   return "AgentLMStudio"
         }
     }
 }
@@ -68,7 +71,7 @@ struct AgentIcon: View {
         }
     }
 
-    // MARK: - Favicon (WorkBuddy / OpenCode)
+    // MARK: - Favicon (WorkBuddy / OpenCode / LM Studio)
 
     private func favicon(_ asset: String) -> some View {
         Image(asset)
