@@ -1,12 +1,12 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "Couldn't find the terminal for this session": {
+    "Couldn't find the window for this session": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "找不到该会话对应的终端"
+            "value": "找不到该会话对应的窗口"
           }
         }
       }

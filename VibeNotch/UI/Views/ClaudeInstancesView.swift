@@ -180,7 +180,7 @@ struct ClaudeInstancesView: View {
         case .noPermission(let terminal):
             return String(format: L("Switched to %@ — allow Automation in Privacy & Security"), terminal)
         case .noTerminal:
-            return L("Couldn't find the terminal for this session")
+            return L("Couldn't find the window for this session")
         }
     }
 

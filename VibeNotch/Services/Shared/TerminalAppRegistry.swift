@@ -10,7 +10,7 @@ import Foundation
 /// Registry of known terminal application names and bundle identifiers
 struct TerminalAppRegistry: Sendable {
     /// Terminal app names for process matching
-    static let appNames: Set<String> = [
+    nonisolated static let appNames: Set<String> = [
         "Terminal",
         "iTerm2",
         "iTerm",
@@ -55,20 +55,25 @@ struct TerminalAppRegistry: Sendable {
         "dev.zed.Zed"
     ]
 
+    /// Names that are also ordinary English words / substrings. `ps comm`
+    /// returns full executable paths, so a plain `contains("code")` would
+    /// classify `.../@opencode/cli/bin/opencode.exe` as a terminal. These are
+    /// matched exactly (against the whole string or the basename) instead.
+    nonisolated private static let exactMatchNames: Set<String> = [
+        "Hyper", "Warp", "Tabby", "Rio", "Contour", "foot", "st",
+        "Code", "Code - Insiders", "zed"
+    ]
+
     /// Check if an app name or command path is a known terminal.
-    ///
-    /// Very short names ("st", "zed", "Rio", …) are matched against the
-    /// executable basename only. A plain `contains` would match unrelated
-    /// paths ("Support", "install", "sized", …) and make process-tree
-    /// resolution stop at a non-terminal ancestor.
-    static func isTerminal(_ appNameOrCommand: String) -> Bool {
+    /// Pure string matching — safe to call from any actor.
+    nonisolated static func isTerminal(_ appNameOrCommand: String) -> Bool {
         let lower = appNameOrCommand.lowercased()
         let basename = (appNameOrCommand as NSString).lastPathComponent.lowercased()
 
         for name in appNames {
             let candidate = name.lowercased()
-            if candidate.count <= 3 {
-                if basename == candidate { return true }
+            if exactMatchNames.contains(name) {
+                if lower == candidate || basename == candidate { return true }
             } else if lower.contains(candidate) {
                 return true
             }

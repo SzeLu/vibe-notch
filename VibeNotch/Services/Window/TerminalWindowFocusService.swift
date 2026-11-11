@@ -2,7 +2,24 @@
 //  TerminalWindowFocusService.swift
 //  VibeNotch
 //
-//  Brings the terminal window/tab that hosts a given agent session to the front.
+//  Brings the window that hosts a given agent session to the front.
+//
+//  The important part is *what to activate*. Walking up the process tree to
+//  "the first ancestor whose name looks like a terminal" is not enough:
+//
+//    - Electron apps spawn helper processes. A Claude session inside Paseo
+//      looks like `claude -> /bin/zsh -> Paseo Helper (pid 3356)`, but the
+//      window belongs to the main `Paseo` process (pid 1252). Activating the
+//      helper does nothing visible.
+//    - Some agents have no terminal at all. A WorkBuddy session's pid *is*
+//      `/Applications/WorkBuddy AI.app/.../Electron`; its ancestors are other
+//      Electron processes and launchd. There is nothing named "terminal" in
+//      the chain, yet the user still expects to jump back to that app.
+//
+//  So we resolve the outermost `.app` bundle along the ancestor chain and
+//  match it against NSWorkspace.runningApplications to get the *main* app
+//  process. Every strategy activates that app first, which also makes the
+//  no-permission / no-match degradation reliable.
 //
 //  Strategy, best match first:
 //    1. tmux + yabai           handled by YabaiController (the caller tries it
@@ -13,8 +30,8 @@
 //       (tty_name / cwd) + `activate-pane`
 //    4. Everything else        activate the host app, then — when Accessibility
 //       is granted — raise the window whose title best matches the session's
-//       cwd / project name. This covers Electron-based terminals (Paseo),
-//       kitty, Warp, Ghostty, VS Code, etc.
+//       cwd / project name. Covers Paseo, WorkBuddy, kitty, Warp, Ghostty,
+//       VS Code, Tabby, ...
 //    5. Last resort            just activate the host app
 //
 //  Nothing here requires yabai, and the app is not sandboxed, so Apple events
@@ -29,11 +46,11 @@ import Foundation
 enum TerminalFocusResult: Equatable, Sendable {
     /// The exact window/tab hosting the session was brought to the front.
     case focused(terminal: String)
-    /// The host terminal app was brought to the front, but the specific window
-    /// could not be pinpointed. `needsPermission` tells the UI to point the
-    /// user at Accessibility settings.
+    /// The host app was brought to the front, but the specific window could not
+    /// be pinpointed. `needsPermission` tells the UI to point the user at
+    /// Accessibility settings.
     case activated(terminal: String, needsPermission: Bool)
-    /// Could not work out which terminal process hosts this session at all.
+    /// Could not work out which app hosts this session at all.
     case noTerminal
     /// Apple events were blocked (Automation permission not granted).
     case noPermission(terminal: String)
@@ -46,24 +63,26 @@ actor TerminalWindowFocusService {
 
     private init() {}
 
-    /// Focus the terminal that hosts `session`.
+    /// Focus the window/app that hosts `session`.
     ///
     /// - Parameter summary: pre-computed window-title hint. `SessionState`'s
     ///   computed properties are `@MainActor`-isolated under this project's
     ///   default isolation, so the caller supplies it instead.
     func focus(session: SessionState, summary: String? = nil) async -> TerminalFocusResult {
         let tree = ProcessTreeBuilder.shared.buildTree()
+        let agentPid = resolveAgentPid(session: session, tree: tree)
 
-        guard let agentPid = resolveAgentPid(session: session, tree: tree) else {
-            return .noTerminal
+        // Resolve the GUI app that owns the window. Fall back to the agent's
+        // own application when no anchor process is available (WorkBuddy).
+        // `??` takes an autoclosure, so the second await can't live there.
+        var host = await resolveHostApp(agentPid: agentPid, tree: tree)
+        if host == nil {
+            host = await fallbackHost(for: session.source)
         }
+        guard let host else { return .noTerminal }
 
-        guard let terminalPid = ProcessTreeBuilder.shared.findTerminalPid(forProcess: agentPid, tree: tree) else {
-            return .noTerminal
-        }
-
-        let kind = classify(terminalPid: terminalPid, tree: tree)
-        let tty = resolveTTY(session: session, agentPid: agentPid, tree: tree)
+        let kind = classify(host: host)
+        let tty = agentPid.flatMap { resolveTTY(session: session, agentPid: $0, tree: tree) }
         let candidates = titleCandidates(session: session, summary: summary)
 
         switch kind {
@@ -74,43 +93,128 @@ actor TerminalWindowFocusService {
                 case .focused:
                     return .focused(terminal: kind.displayName)
                 case .noPermission:
-                    // Apple events are blocked. Still try to at least activate
-                    // the app, but report the permission problem.
-                    await activateApp(pid: terminalPid)
+                    await activateApp(pid: host.pid)
                     return .noPermission(terminal: kind.displayName)
                 case .noMatch:
                     break
                 }
             }
-            return await focusGeneric(
-                terminalPid: terminalPid,
-                kind: kind,
-                candidates: candidates
-            )
+            return await focusWithAccessibility(host: host, kind: kind, candidates: candidates)
 
         case .wezTerm:
-            if let paneTitles = await focusViaWezTerm(session: session, tty: tty, candidates: candidates) {
-                await activateApp(pid: terminalPid)
+            if let paneTitles = await focusViaWezTerm(
+                session: session, tty: tty, candidates: candidates
+            ) {
+                await activateApp(pid: host.pid)
                 // Raise the correct GUI window too (WezTerm can have several).
                 _ = raiseBestWindow(
-                    terminalPid: terminalPid,
+                    terminalPid: host.pid,
                     candidates: dedupe(candidates + paneTitles)
                 )
                 return .focused(terminal: kind.displayName)
             }
-            return await focusGeneric(
-                terminalPid: terminalPid,
-                kind: kind,
-                candidates: candidates
-            )
+            return await focusWithAccessibility(host: host, kind: kind, candidates: candidates)
 
-        case .paseo, .generic:
-            return await focusGeneric(
-                terminalPid: terminalPid,
-                kind: kind,
-                candidates: candidates
-            )
+        case .paseo, .workBuddy, .generic:
+            return await focusWithAccessibility(host: host, kind: kind, candidates: candidates)
         }
+    }
+
+    // MARK: - Host app resolution
+
+    /// Plain-value description of the GUI app we want to activate.
+    /// `NSRunningApplication` isn't Sendable, so don't carry it across actors.
+    private struct HostAppInfo: Sendable {
+        let pid: Int
+        let bundleId: String?
+        let name: String
+    }
+
+    /// Walk the ancestor chain and find the outermost `.app` bundle, then
+    /// match it against the running apps so we always activate the *main*
+    /// process rather than an Electron helper.
+    private func resolveHostApp(agentPid: Int?, tree: [Int: ProcessInfo]) async -> HostAppInfo? {
+        guard let agentPid else { return nil }
+
+        var bundlePaths: [String] = []
+        var legacyTerminalPid: Int?
+
+        var current = agentPid
+        var depth = 0
+        while current > 1, depth < 24 {
+            guard let info = tree[current] else { break }
+            if let path = appBundlePath(from: info.command), !bundlePaths.contains(path) {
+                bundlePaths.append(path)
+            }
+            if legacyTerminalPid == nil, TerminalAppRegistry.isTerminal(info.command) {
+                legacyTerminalPid = current
+            }
+            current = info.ppid
+            depth += 1
+        }
+
+        let terminalPid = legacyTerminalPid
+        let paths = bundlePaths   // immutable snapshot for the MainActor closure
+        let info: HostAppInfo? = await MainActor.run {
+            let running = NSWorkspace.shared.runningApplications
+
+            // Exact bundle-path match first (most reliable).
+            for path in paths {
+                let fileName = (path as NSString).lastPathComponent
+                if let app = running.first(where: {
+                    $0.bundleURL?.path == path || $0.bundleURL?.lastPathComponent == fileName
+                }) {
+                    return Self.makeHostInfo(app)
+                }
+            }
+
+            // No .app in the chain (rare) — try the legacy terminal pid.
+            if let terminalPid,
+               let app = NSRunningApplication(processIdentifier: pid_t(terminalPid)) {
+                return Self.makeHostInfo(app)
+            }
+            return nil
+        }
+        return info
+    }
+
+    /// Last resort for agents whose process chain is entirely detached from a
+    /// GUI app (e.g. a WorkBuddy heartbeat whose pid has already gone away).
+    private func fallbackHost(for source: AgentKind) async -> HostAppInfo? {
+        let bundleId: String
+        switch source {
+        case .workBuddy: bundleId = "com.workbuddy.workbuddy-ai"
+        case .lmStudio: bundleId = "ai.elementlabs.lmstudio"
+        case .claudeCode, .openCode: return nil
+        }
+
+        let info: HostAppInfo? = await MainActor.run {
+            NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+                .first
+                .map { Self.makeHostInfo($0) }
+        }
+        return info
+    }
+
+    private static func makeHostInfo(_ app: NSRunningApplication) -> HostAppInfo {
+        HostAppInfo(
+            pid: Int(app.processIdentifier),
+            bundleId: app.bundleIdentifier,
+            name: app.localizedName ?? app.bundleURL?.lastPathComponent ?? "Terminal"
+        )
+    }
+
+    /// Extract the outermost `.app` from a `ps comm` path.
+    /// `/Applications/Paseo.app/Contents/Frameworks/Paseo Helper.app/.../Paseo Helper`
+    /// → `/Applications/Paseo.app`.
+    private func appBundlePath(from command: String) -> String? {
+        guard command.hasPrefix("/") else { return nil }
+        var path = ""
+        for component in command.split(separator: "/", omittingEmptySubsequences: true) {
+            path += "/" + component
+            if component.hasSuffix(".app") { return path }
+        }
+        return nil
     }
 
     // MARK: - Terminal classification
@@ -120,6 +224,7 @@ actor TerminalWindowFocusService {
         case iTerm2
         case wezTerm
         case paseo
+        case workBuddy
         case generic(String)
 
         var displayName: String {
@@ -128,41 +233,38 @@ actor TerminalWindowFocusService {
             case .iTerm2: return "iTerm2"
             case .wezTerm: return "WezTerm"
             case .paseo: return "Paseo"
+            case .workBuddy: return "WorkBuddy"
             case .generic(let name): return name
             }
         }
     }
 
-    private func classify(terminalPid: Int, tree: [Int: ProcessInfo]) -> TerminalKind {
-        let command = tree[terminalPid]?.command ?? ""
-        let running = NSRunningApplication(processIdentifier: pid_t(terminalPid))
-        let bundleId = running?.bundleIdentifier
-        let appName = running?.localizedName ?? (command as NSString).lastPathComponent
-
-        if let bundleId {
+    private func classify(host: HostAppInfo) -> TerminalKind {
+        if let bundleId = host.bundleId {
             switch bundleId {
             case "com.apple.Terminal": return .terminalApp
             case "com.googlecode.iterm2": return .iTerm2
             case "com.github.wez.wezterm": return .wezTerm
             case "sh.paseo.desktop": return .paseo
+            case "com.workbuddy.workbuddy-ai": return .workBuddy
             default: break
             }
         }
 
-        // Fall back to the process name when the bundle id is unavailable.
-        let lower = command.lowercased()
+        let lower = host.name.lowercased()
         if lower.contains("wezterm") { return .wezTerm }
         if lower.contains("paseo") { return .paseo }
+        if lower.contains("workbuddy") { return .workBuddy }
         if lower.contains("iterm") { return .iTerm2 }
         if lower.contains("terminal") { return .terminalApp }
-        return .generic(appName.isEmpty ? "Terminal" : appName)
+        return .generic(host.name)
     }
 
     // MARK: - Resolving the agent process / TTY
 
     /// Most providers publish a PID. Polled providers without one (OpenCode)
     /// are resolved by matching their working directory against running agent
-    /// processes — those are still descendants of the host terminal.
+    /// processes — those are still descendants of the host app.
     private func resolveAgentPid(session: SessionState, tree: [Int: ProcessInfo]) -> Int? {
         if let pid = session.pid, tree[pid] != nil { return pid }
         guard !session.cwd.isEmpty else { return nil }
@@ -170,10 +272,9 @@ actor TerminalWindowFocusService {
         let keywords: [String]
         switch session.source {
         case .openCode: keywords = ["opencode"]
-        case .workBuddy: keywords = ["workbuddy"]
+        case .workBuddy: keywords = ["workbuddy", "electron"]
         case .claudeCode: keywords = ["claude"]
-        // LM Studio sessions have no cwd, so this lookup is never reached.
-        case .lmStudio: return nil
+        case .lmStudio: keywords = ["lmstudio", "lms"]
         }
 
         let candidates = tree.values
@@ -201,7 +302,7 @@ actor TerminalWindowFocusService {
         return value.isEmpty ? nil : value
     }
 
-    /// Strings that plausibly appear in a terminal window/tab title.
+    /// Strings that plausibly appear in a window/tab title.
     private func titleCandidates(session: SessionState, summary: String?) -> [String] {
         var result: [String] = []
         if !session.projectName.isEmpty { result.append(session.projectName) }
@@ -391,18 +492,20 @@ actor TerminalWindowFocusService {
 
     // MARK: - Strategy 4/5: activate app + raise best matching window
 
-    private func focusGeneric(
-        terminalPid: Int,
+    /// Always activates the host app first. Without Accessibility (or without a
+    /// title match) this is still a useful jump instead of a silent no-op.
+    private func focusWithAccessibility(
+        host: HostAppInfo,
         kind: TerminalKind,
         candidates: [String]
     ) async -> TerminalFocusResult {
-        await activateApp(pid: terminalPid)
+        await activateApp(pid: host.pid)
 
         guard AXIsProcessTrusted() else {
             return .activated(terminal: kind.displayName, needsPermission: true)
         }
 
-        let raised = raiseBestWindow(terminalPid: terminalPid, candidates: candidates)
+        let raised = raiseBestWindow(terminalPid: host.pid, candidates: candidates)
         return raised
             ? .focused(terminal: kind.displayName)
             : .activated(terminal: kind.displayName, needsPermission: false)
@@ -465,4 +568,3 @@ actor TerminalWindowFocusService {
         return title
     }
 }
-
