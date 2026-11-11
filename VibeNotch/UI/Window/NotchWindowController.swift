@@ -129,6 +129,14 @@ class NotchWindowController: NSWindowController {
         clickWindow.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces]
         clickWindow.ignoresMouseEvents = false
 
+        // CRITICAL: must be a floating panel so it can receive mouse events
+        // while the app is inactive (VibeNotch runs as an accessory app in the
+        // background). Without this the window is not eligible as the hit window
+        // over the menu bar, so clicks fall through to the system status bar
+        // behind it instead of opening the panel.
+        clickWindow.isFloatingPanel = true
+        clickWindow.allowsToolTipsWhenApplicationIsInactive = true
+
         let clickView = NotchClickCatcherView()
         clickView.onTap = { [weak self] in
             self?.viewModel.notchOpen(reason: .click)
@@ -169,6 +177,14 @@ final class NotchClickCatcherView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         onTap?()
+    }
+
+    // Claim every hit within the catcher's bounds. The catcher is a tiny window
+    // pinned over the physical notch; we want the entire area to be clickable so
+    // the click is consumed and opens the panel instead of falling through to
+    // the system status bar behind it.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return self
     }
 
     // Clicks must not be forwarded anywhere else — the point is to consume the

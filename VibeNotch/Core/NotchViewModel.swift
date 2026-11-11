@@ -173,12 +173,13 @@ class NotchViewModel: ObservableObject {
                 notchClose()
                 // Re-post the click so it reaches the window/app behind us
                 repostClickAt(location)
-            } else if geometry.notchScreenRect.contains(location) {
-                // Clicking notch while opened - only close if NOT in chat mode
-                if !isInChatMode {
-                    notchClose()
-                }
             }
+            // NOTE: Previously this branch also closed the panel when the click
+            // landed on the (collapsed) notch while opened. That conflicts with
+            // the notch-click catcher window: a single click opens the panel via
+            // the catcher, and the same event's monitor handler then closed it
+            // again — so the panel never stayed open. Closing is now handled
+            // exclusively by clicking outside the panel.
         case .closed, .popping:
             if geometry.isPointInNotch(location) {
                 notchOpen(reason: .click)
