@@ -44,6 +44,7 @@ final class AgentRegistry {
             ClaudeCodeProvider(),  // hook / unix-socket driven
             WorkBuddyProvider(),   // heartbeat + read-only SQLite + transcript mtime
             OpenCodeProvider(),    // read-only SQLite session store
+            LMStudioProvider(),    // `lms log stream` — local API requests + predictions
         ]
     }
 }

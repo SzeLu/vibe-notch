@@ -172,6 +172,8 @@ actor TerminalWindowFocusService {
         case .openCode: keywords = ["opencode"]
         case .workBuddy: keywords = ["workbuddy"]
         case .claudeCode: keywords = ["claude"]
+        // LM Studio sessions have no cwd, so this lookup is never reached.
+        case .lmStudio: return nil
         }
 
         let candidates = tree.values

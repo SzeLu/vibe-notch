@@ -6,7 +6,7 @@
   <img src="VibeNotch/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" alt="Logo" width="100" height="100">
   <h3 align="center">Vibe Notch (previously Claude Island)</h3>
   <p align="center">
-    A macOS menu bar app that brings Dynamic Island-style notifications to your coding agents — Claude Code, WorkBuddy, and OpenCode.
+    A macOS menu bar app that brings Dynamic Island-style notifications to your coding agents — Claude Code, WorkBuddy, OpenCode, and LM Studio.
     <br />
     <br />
     <a href="https://github.com/farouqaldori/vibe-notch/releases/latest" target="_blank" rel="noopener noreferrer">
@@ -25,7 +25,7 @@
 ## Features
 
 - **Notch UI** — Animated overlay that expands from the MacBook notch, with a built-in settings menu right inside the panel. Click the notch to open it; hovering only shows a subtle shadow and does **not** auto-expand.
-- **Multi-Agent Monitoring** — Track live sessions from Claude Code, WorkBuddy, and OpenCode side by side, each tagged with a short badge (`WB`, `OC`).
+- **Multi-Agent Monitoring** — Track live sessions from Claude Code, WorkBuddy, OpenCode, and LM Studio side by side, each tagged with a short badge (`WB`, `OC`, `LM`).
 - **Live Session Monitoring** — See every running agent session, its status (processing / waiting for input / completed), model, and working directory in real time.
 - **Permission Approvals** — Approve or deny Claude Code tool executions directly from the notch — no need to switch back to the terminal.
 - **Jump to Terminal** — Every session has a jump button that brings the terminal window/tab running that agent to the front. Terminal.app and iTerm2 are matched exactly by TTY, WezTerm by its CLI pane (TTY / cwd), and other terminals (Paseo, kitty, Warp, Ghostty, VS Code, …) by activating the app and raising the window whose title matches the project. tmux + yabai keeps its exact pane switching.
@@ -39,10 +39,11 @@
 ## Requirements
 
 - macOS 15.6+
-- At least one supported coding agent:
+- At least one supported coding agent or local model server:
   - **Claude Code** CLI (full support: hooks, permissions, chat history)
   - **WorkBuddy** (session monitoring)
   - **OpenCode** (session monitoring)
+  - **LM Studio** 0.4+ with the `lms` CLI (local API request monitoring)
 
 ## Install
 
@@ -61,8 +62,11 @@ Each supported agent is an independent provider unit. Vibe Notch detects their a
 | **Claude Code** | Hooks installed into `~/.claude/hooks/` push state over a Unix socket | Sessions, permission approvals, chat history, shell & background tasks |
 | **WorkBuddy** | Polls `~/.workbuddy-ai/sessions/*.json` heartbeats and reads `~/.workbuddy-ai/workbuddy.db` (read-only) | Sessions, shell & background tasks |
 | **OpenCode** | Polls `~/.local/share/opencode/opencode.db` (read-only; override with `OPENCODE_DATA_DIR`) | Sessions, shell & background tasks |
+| **LM Studio** | Tails `lms log stream --json` (model + server logs); no API token or proxy required | Local API requests, generation start/finish, model name |
 
 When Claude Code needs permission to run a tool, the notch expands with approve/deny buttons. Polled agents (WorkBuddy, OpenCode) are discovered every few seconds and their status is derived from the agent's own database and transcript activity.
+
+LM Studio is watched through the official `lms` CLI log stream: every request that reaches the local API server (default `127.0.0.1:1234`) plus prediction start/end events are aggregated into one session. The CLI authenticates over its own internal channel, so **no API token, reverse proxy or LM Studio server setting change is needed**. Only event types, timestamps, model identifiers and request method/path are read — prompt and response bodies are never read or logged. Since LM Studio exposes no session IDs or working directories, chat history, permission approvals and "jump to terminal" are not available for it. The provider stays completely idle when `lms` is not installed; set `LMS_CLI_PATH` to point at a non-standard CLI location.
 
 ## Scripts
 

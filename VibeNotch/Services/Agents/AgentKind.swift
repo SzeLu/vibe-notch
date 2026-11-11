@@ -13,12 +13,14 @@ enum AgentKind: String, Sendable, CaseIterable {
     case claudeCode
     case workBuddy
     case openCode
+    case lmStudio
 
     var displayName: String {
         switch self {
         case .claudeCode: return "Claude Code"
         case .workBuddy: return "WorkBuddy"
         case .openCode: return "OpenCode"
+        case .lmStudio: return "LM Studio"
         }
     }
 
@@ -29,6 +31,7 @@ enum AgentKind: String, Sendable, CaseIterable {
         case .claudeCode: return ""
         case .workBuddy: return "WB"
         case .openCode: return "OC"
+        case .lmStudio: return "LM"
         }
     }
 
@@ -39,6 +42,7 @@ enum AgentKind: String, Sendable, CaseIterable {
         case .claudeCode: return ""   // hook events already use globally unique ids
         case .workBuddy: return "wb-"
         case .openCode: return "oc-"
+        case .lmStudio: return "lms-"
         }
     }
 

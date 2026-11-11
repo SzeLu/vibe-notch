@@ -19,6 +19,7 @@ extension AgentKind {
         case .claudeCode: return Color(red: 0.85, green: 0.47, blue: 0.34)  // #D97757 copper
         case .workBuddy:  return Color(red: 0.49, green: 0.55, blue: 0.97)  // #7C8CF8 violet
         case .openCode:   return Color(red: 0.31, green: 0.82, blue: 0.65)  // #4FD1A5 mint
+        case .lmStudio:   return Color(red: 0.36, green: 0.65, blue: 0.95)  // #5CA6F2 blue
         }
     }
 
@@ -28,6 +29,7 @@ extension AgentKind {
         case .claudeCode: return nil
         case .workBuddy:  return "AgentWorkBuddy"
         case .openCode:   return "AgentOpenCode"
+        case .lmStudio:   return nil
         }
     }
 }
@@ -41,13 +43,29 @@ struct AgentIcon: View {
         Group {
             if let asset = kind.faviconAsset {
                 favicon(asset)
-            } else {
+            } else if kind == .claudeCode {
                 crabChip
+            } else {
+                badgeChip
             }
         }
         .frame(width: size, height: size)
         .accessibilityLabel(kind.displayName)
         .help(kind.displayName)
+    }
+
+    /// Providers without a bundled favicon get a compact letter chip instead
+    /// of the Claude Code crab mascot.
+    private var badgeChip: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.30, style: .continuous)
+                .fill(kind.accent.opacity(0.16))
+            RoundedRectangle(cornerRadius: size * 0.30, style: .continuous)
+                .strokeBorder(kind.accent.opacity(0.40), lineWidth: max(0.6, size * 0.05))
+            Text(kind.badge)
+                .font(.system(size: size * 0.46, weight: .medium, design: .rounded))
+                .foregroundColor(kind.accent)
+        }
     }
 
     // MARK: - Favicon (WorkBuddy / OpenCode)
