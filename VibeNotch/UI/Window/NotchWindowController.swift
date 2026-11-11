@@ -125,17 +125,26 @@ class NotchWindowController: NSWindowController {
         clickWindow.hasShadow = false
         clickWindow.isMovable = false
         clickWindow.isReleasedWhenClosed = false
-        clickWindow.level = .mainMenu + 5
         clickWindow.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces]
         clickWindow.ignoresMouseEvents = false
 
-        // CRITICAL: must be a floating panel so it can receive mouse events
-        // while the app is inactive (VibeNotch runs as an accessory app in the
-        // background). Without this the window is not eligible as the hit window
-        // over the menu bar, so clicks fall through to the system status bar
-        // behind it instead of opening the panel.
+        // Must be a floating panel so it can receive mouse events while the app
+        // is inactive (VibeNotch runs as an accessory app in the background).
         clickWindow.isFloatingPanel = true
         clickWindow.allowsToolTipsWhenApplicationIsInactive = true
+        // Keep the catcher on screen even though VibeNotch is an inactive
+        // accessory app — otherwise it hides the moment the app loses focus and
+        // stops catching clicks.
+        clickWindow.hidesOnDeactivate = false
+
+        // CRITICAL ORDERING: set the level AFTER isFloatingPanel. Setting
+        // isFloatingPanel = true silently resets the window level back to
+        // .floating (3). At level 3 the window sits BELOW the menu bar (24), so
+        // the system status bar covers it and every click falls through to the
+        // status bar. A low-level window is also nudged down below the menu bar
+        // by the window server, so it no longer covers the notch. Setting the
+        // level last (above the menu bar) fixes both.
+        clickWindow.level = .mainMenu + 5
 
         let clickView = NotchClickCatcherView()
         clickView.onTap = { [weak self] in
@@ -149,7 +158,11 @@ class NotchWindowController: NSWindowController {
         clickWindow.setFrameOrigin(NSPoint(x: screenFrame.midX - width / 2, y: screenFrame.maxY - height))
 
         self.notchClickWindow = clickWindow
-        clickWindow.orderFront(nil)
+        // Re-assert the level right before showing (defensive: nothing above
+        // should have reset it), then order front regardless of app activation
+        // so the catcher sits above the menu bar while the app is inactive.
+        clickWindow.level = .mainMenu + 5
+        clickWindow.orderFrontRegardless()
 
         // Show the catcher only while the panel is collapsed; hide it once open
         // so the main panel receives every event.
@@ -160,10 +173,49 @@ class NotchWindowController: NSWindowController {
                 case .opened:
                     clickWindow?.orderOut(nil)
                 case .closed, .popping:
-                    clickWindow?.orderFront(nil)
+                    clickWindow?.level = .mainMenu + 5
+                    clickWindow?.orderFrontRegardless()
                 }
             }
             .store(in: &cancellables)
+
+        // Keep the catcher's width in sync with the collapsed notch content so
+        // clicks on the activity-expanded sides (processing spinner, pending
+        // indicator, waiting-for-input checkmark) are still captured instead of
+        // falling through to the status bar.
+        viewModel.$collapsedContentWidth
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] width in
+                self?.updateCatcherWidth(contentWidth: width)
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Size the catcher to the collapsed notch content width (device notch + any
+    /// activity expansion), keeping it centered and pinned to the screen's top
+    /// edge. Falls back to the bare notch width before the view reports a width.
+    private func updateCatcherWidth(contentWidth: CGFloat) {
+        guard let clickWindow = notchClickWindow else { return }
+        let notch = screen.notchSize
+        let height = notch.height + 16
+        // `contentWidth` is the notch + expansion content width reported by the
+        // view; add horizontal padding so the catcher fully covers the rendered
+        // pill (which carries its own horizontal padding plus a transient bounce).
+        let width = max(notch.width + 28, contentWidth + 48)
+        guard abs(clickWindow.frame.width - width) > 0.5 else { return }
+
+        let screenFrame = screen.frame
+        let origin = NSPoint(x: screenFrame.midX - width / 2, y: screenFrame.maxY - height)
+        clickWindow.setFrame(
+            NSRect(origin: origin, size: NSSize(width: width, height: height)),
+            display: false
+        )
+        // Re-assert the level after a frame change and keep it front while
+        // collapsed (the window stays ordered out while the panel is open).
+        clickWindow.level = .mainMenu + 5
+        if viewModel.status != .opened {
+            clickWindow.orderFrontRegardless()
+        }
     }
 
     required init?(coder: NSCoder) {

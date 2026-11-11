@@ -195,6 +195,16 @@ struct NotchView: View {
                 isVisible = true
             }
         }
+        // Report the collapsed content width (notch + activity expansion) so the
+        // click-catcher window can grow to cover the expanded sides. Dispatched
+        // async + de-duplicated to avoid mutating observed state mid-update.
+        .onChange(of: closedContentWidth, initial: true) { _, newWidth in
+            DispatchQueue.main.async {
+                if viewModel.collapsedContentWidth != newWidth {
+                    viewModel.collapsedContentWidth = newWidth
+                }
+            }
+        }
         .onChange(of: viewModel.status) { oldStatus, newStatus in
             handleStatusChange(from: oldStatus, to: newStatus)
         }

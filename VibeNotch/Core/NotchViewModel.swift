@@ -54,6 +54,13 @@ class NotchViewModel: ObservableObject {
     @Published var shellSessionFilter: String?
     @Published var monitorSessionFilter: String?
 
+    /// Width of the collapsed notch content (device notch + any activity
+    /// expansion such as the processing spinner, pending-permission indicator or
+    /// waiting-for-input checkmark), as reported by `NotchView`. The click
+    /// catcher window sizes itself to this so clicks on the expanded sides are
+    /// still captured instead of falling through to the system status bar.
+    @Published var collapsedContentWidth: CGFloat = 0
+
     // MARK: - Dependencies
 
     private let screenSelector = ScreenSelector.shared
@@ -117,6 +124,16 @@ class NotchViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let events = EventMonitors.shared
 
+    /// Timestamp of the most recent click-driven open. Used to ignore the same
+    /// physical click's close handler (see `handleMouseDown`), so a single click
+    /// on the collapsed notch opens the panel instead of opening then closing.
+    private var lastClickOpenTime: Date = .distantPast
+
+    /// Timestamp of the most recent close. Used to ignore the same physical
+    /// click's open handler, so clicking the notch to close the panel doesn't
+    /// get immediately reopened by the duplicate monitor callback.
+    private var lastCloseTime: Date = .distantPast
+
     // MARK: - Initialization
 
     init(deviceNotchRect: CGRect, screenRect: CGRect, windowHeight: CGFloat, hasPhysicalNotch: Bool) {
@@ -173,15 +190,24 @@ class NotchViewModel: ObservableObject {
                 notchClose()
                 // Re-post the click so it reaches the window/app behind us
                 repostClickAt(location)
+            } else if geometry.notchScreenRect.contains(location) {
+                // Clicking the notch while opened closes it — but NOT on the same
+                // click that just opened it. Opening and closing are driven by
+                // separate event paths (the catcher window's mouseDown and the
+                // global/local mouse monitor) that both fire for one physical
+                // click, so guard with a short grace period; otherwise the panel
+                // would open and be closed again within the same event.
+                if !isInChatMode && Date().timeIntervalSince(lastClickOpenTime) > 0.4 {
+                    notchClose()
+                }
             }
-            // NOTE: Previously this branch also closed the panel when the click
-            // landed on the (collapsed) notch while opened. That conflicts with
-            // the notch-click catcher window: a single click opens the panel via
-            // the catcher, and the same event's monitor handler then closed it
-            // again — so the panel never stayed open. Closing is now handled
-            // exclusively by clicking outside the panel.
         case .closed, .popping:
-            if geometry.isPointInNotch(location) {
+            // Guard against the same click that just closed the panel reopening
+            // it: the local and global mouse monitors each fire once per click,
+            // so without this a click-to-close would close then immediately
+            // reopen via the duplicate callback.
+            if geometry.isPointInNotch(location),
+               Date().timeIntervalSince(lastCloseTime) > 0.4 {
                 notchOpen(reason: .click)
             }
         }
@@ -228,6 +254,10 @@ class NotchViewModel: ObservableObject {
         openReason = reason
         status = .opened
 
+        if reason == .click {
+            lastClickOpenTime = Date()
+        }
+
         // Don't restore chat on notification - show instances list instead
         if reason == .notification {
             currentChatSession = nil
@@ -245,6 +275,7 @@ class NotchViewModel: ObservableObject {
     }
 
     func notchClose() {
+        lastCloseTime = Date()
         // Save chat session before closing if in chat mode
         if case .chat(let session) = contentType {
             currentChatSession = session
