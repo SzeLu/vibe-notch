@@ -31,6 +31,9 @@ struct NotchView: View {
 
     @Namespace private var activityNamespace
 
+    /// User-selected appearance (System / Light / Dark), shared via AppStorage.
+    @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.system.rawValue
+
     /// Whether any Claude session is currently processing or compacting
     private var isAnyProcessing: Bool {
         sessionMonitor.instances.contains { $0.phase == .processing || $0.phase == .compacting }
@@ -189,6 +192,7 @@ struct NotchView: View {
         }
         .opacity(isVisible ? 1 : 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .preferredColorScheme(AppAppearance(rawValue: appearanceRaw)?.colorScheme)
         .onAppear {
             sessionMonitor.startMonitoring()
             // On non-notched devices, keep visible so users have a target to interact with
