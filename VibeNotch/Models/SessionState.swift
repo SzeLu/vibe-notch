@@ -209,6 +209,14 @@ struct SessionState: Equatable, Identifiable, Sendable {
     var canInteract: Bool {
         phase.needsAttention
     }
+
+    /// Whether we have enough information to attempt jumping to the terminal
+    /// that hosts this session. A PID is the reliable route; a non-empty cwd
+    /// is enough for the best-effort lookup used by polled agents (OpenCode)
+    /// that don't publish one.
+    var canFocusTerminal: Bool {
+        pid != nil || !cwd.isEmpty
+    }
 }
 
 // MARK: - Tool Tracker

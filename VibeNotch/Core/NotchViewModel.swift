@@ -54,6 +54,12 @@ class NotchViewModel: ObservableObject {
     @Published var shellSessionFilter: String?
     @Published var monitorSessionFilter: String?
 
+    /// Transient one-line feedback shown at the bottom of the opened panel
+    /// (e.g. the result of a "jump to terminal" action). Auto-clears.
+    @Published var toastMessage: String?
+    /// Guards against an older toast timer clearing a newer toast.
+    private var toastToken: UUID?
+
     /// Width of the collapsed notch content (device notch + any activity
     /// expansion such as the processing spinner, pending-permission indicator or
     /// waiting-for-input checkmark), as reported by `NotchView`. The click
@@ -342,6 +348,18 @@ class NotchViewModel: ObservableObject {
     func exitChat() {
         currentChatSession = nil
         contentType = .instances
+    }
+
+    /// Show a short-lived toast inside the opened notch panel.
+    /// A new toast replaces the previous one and resets its dismissal timer.
+    func showToast(_ message: String) {
+        toastMessage = message
+        let token = UUID()
+        toastToken = token
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            guard let self, self.toastToken == token else { return }
+            self.toastMessage = nil
+        }
     }
 
     /// Perform boot animation: expand briefly then collapse

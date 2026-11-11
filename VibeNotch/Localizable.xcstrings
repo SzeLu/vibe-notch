@@ -1,6 +1,76 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Couldn't find the terminal for this session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找不到该会话对应的终端"
+          }
+        }
+      }
+    },
+    "Jump to terminal": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跳转到终端"
+          }
+        }
+      }
+    },
+    "Jumped to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已跳转到 %@"
+          }
+        }
+      }
+    },
+    "Jumped to tmux pane": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已跳转到 tmux 面板"
+          }
+        }
+      }
+    },
+    "Switched to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已切换到 %@"
+          }
+        }
+      }
+    },
+    "Switched to %@ — allow Automation in Privacy & Security": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已切换到 %@ · 请在「隐私与安全性 → 自动化」中授权"
+          }
+        }
+      }
+    },
+    "Switched to %@ — grant Accessibility to target a window": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已切换到 %@ · 授予辅助功能可定位到具体窗口"
+          }
+        }
+      }
+    },
     "(No content)": {
       "localizations": {
         "zh-Hans": {

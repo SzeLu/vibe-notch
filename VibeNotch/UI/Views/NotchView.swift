@@ -156,6 +156,15 @@ struct NotchView: View {
                     .padding([.horizontal, .bottom], viewModel.status == .opened ? 12 : 0)
                     .background(Theme.panel)
                     .clipShape(currentNotchShape)
+                    .overlay(alignment: .bottom) {
+                        if let message = viewModel.toastMessage, viewModel.status == .opened {
+                            ToastBubble(message: message)
+                                .padding(.bottom, 10)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.22), value: viewModel.toastMessage)
                     .overlay(alignment: .top) {
                         Rectangle()
                             .fill(Theme.panel)
@@ -587,6 +596,33 @@ struct NotchView: View {
         }
 
         return false
+    }
+
+    // MARK: - Toast
+
+    /// Small transient status bubble at the bottom of the opened panel.
+    private struct ToastBubble: View {
+        let message: String
+
+        var body: some View {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.right.square")
+                    .font(.system(size: 10, weight: .medium))
+                Text(message)
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundColor(.primary.opacity(0.9))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule().fill(Color.primary.opacity(0.12))
+            )
+            .overlay(
+                Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+            )
+            .padding(.horizontal, 12)
+        }
     }
 
     // MARK: - Background Task Notifications

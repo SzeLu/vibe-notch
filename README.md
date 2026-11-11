@@ -28,6 +28,7 @@
 - **Multi-Agent Monitoring** — Track live sessions from Claude Code, WorkBuddy, and OpenCode side by side, each tagged with a short badge (`WB`, `OC`).
 - **Live Session Monitoring** — See every running agent session, its status (processing / waiting for input / completed), model, and working directory in real time.
 - **Permission Approvals** — Approve or deny Claude Code tool executions directly from the notch — no need to switch back to the terminal.
+- **Jump to Terminal** — Every session has a jump button that brings the terminal window/tab running that agent to the front. Terminal.app and iTerm2 are matched exactly by TTY, WezTerm by its CLI pane (TTY / cwd), and other terminals (Paseo, kitty, Warp, Ghostty, VS Code, …) by activating the app and raising the window whose title matches the project. tmux + yabai keeps its exact pane switching.
 - **Chat History** — View the full conversation with markdown rendering for Claude Code sessions.
 - **Shell Panel** — A read-only view of the shell commands your agents have run (command, output, status), scoped per session or across all sessions.
 - **Monitor Panel** — Track background / detached tasks agents spawn, with a notch bounce and sound when a task finishes.

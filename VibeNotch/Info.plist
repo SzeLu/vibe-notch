@@ -17,6 +17,15 @@
     <key>NSHumanReadableCopyright</key>
     <string>Copyright 2025. All rights reserved.</string>
 
+    <!-- "Jump to terminal" uses AppleScript to select the exact tab/session in
+         Terminal.app and iTerm2. -->
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Vibe Notch uses Apple events to bring the terminal tab running your coding agent to the front.</string>
+    <!-- "Jump to terminal" reads window titles and raises the matching window
+         for terminals without a scripting dictionary (Paseo, Warp, etc.). -->
+    <key>NSAccessibilityUsageDescription</key>
+    <string>Vibe Notch needs Accessibility access to focus the terminal window running your coding agent.</string>
+
     <!-- Sparkle Update Configuration -->
     <key>SUFeedURL</key>
     <string>https://vibenotch.app/appcast.xml</string>

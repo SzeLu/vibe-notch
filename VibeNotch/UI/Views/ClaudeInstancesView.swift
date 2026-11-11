@@ -134,14 +134,53 @@ struct ClaudeInstancesView: View {
     // MARK: - Actions
 
     private func focusSession(_ session: SessionState) {
-        guard session.isInTmux else { return }
-
+        // windowHint is a @MainActor-isolated computed property under the
+        // project's default isolation, so resolve it here before hopping off.
+        let summary = session.windowHint
         Task {
-            if let pid = session.pid {
-                _ = await YabaiController.shared.focusWindow(forClaudePid: pid)
-            } else {
-                _ = await YabaiController.shared.focusWindow(forWorkingDirectory: session.cwd)
+            // tmux + yabai keeps its exact pane-switching behaviour.
+            if session.isInTmux {
+                let yabaiAvailable = await WindowFinder.shared.isYabaiAvailable()
+                if yabaiAvailable {
+                    let succeeded: Bool
+                    if let pid = session.pid {
+                        succeeded = await YabaiController.shared.focusWindow(forClaudePid: pid)
+                    } else {
+                        succeeded = await YabaiController.shared.focusWindow(forWorkingDirectory: session.cwd)
+                    }
+                    if succeeded {
+                        await MainActor.run {
+                            viewModel.showToast(L("Jumped to tmux pane"))
+                        }
+                        return
+                    }
+                }
             }
+
+            let result = await TerminalWindowFocusService.shared.focus(
+                session: session,
+                summary: summary
+            )
+            let message = Self.toastMessage(for: result)
+            await MainActor.run {
+                viewModel.showToast(message)
+            }
+        }
+    }
+
+    /// Human-readable result of a jump, shown as a short toast.
+    private static func toastMessage(for result: TerminalFocusResult) -> String {
+        switch result {
+        case .focused(let terminal):
+            return String(format: L("Jumped to %@"), terminal)
+        case .activated(let terminal, let needsPermission):
+            return needsPermission
+                ? String(format: L("Switched to %@ — grant Accessibility to target a window"), terminal)
+                : String(format: L("Switched to %@"), terminal)
+        case .noPermission(let terminal):
+            return String(format: L("Switched to %@ — allow Automation in Privacy & Security"), terminal)
+        case .noTerminal:
+            return L("Couldn't find the terminal for this session")
         }
     }
 
@@ -179,7 +218,6 @@ struct InstanceRow: View {
 
     @State private var isHovered = false
     @State private var spinnerPhase = 0
-    @State private var isYabaiAvailable = false
     @State private var gitRepo: GitInfo.Repo?
 
     private let claudeOrange = Color(red: 0.85, green: 0.47, blue: 0.34)
@@ -352,12 +390,14 @@ struct InstanceRow: View {
                         onChat()
                     }
 
-                    // Go to Terminal button (only if yabai available)
-                    if isYabaiAvailable {
+                    // Go to Terminal button (available for every session whose
+                    // host terminal can be resolved).
+                    if session.canFocusTerminal {
                         TerminalButton(
-                            isEnabled: session.isInTmux,
+                            isEnabled: true,
                             onTap: { onFocus() }
                         )
+                        .help(L("Jump to terminal"))
                     }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
@@ -387,11 +427,12 @@ struct InstanceRow: View {
                         onMonitor()
                     }
 
-                    // Focus icon (only for tmux instances with yabai)
-                    if session.isInTmux && isYabaiAvailable {
-                        IconButton(icon: "eye") {
+                    // Jump to the terminal window hosting this session.
+                    if session.canFocusTerminal {
+                        IconButton(icon: "arrow.up.right.square") {
                             onFocus()
                         }
+                        .help(L("Jump to terminal"))
                     }
 
                     // Archive button - only for idle or completed sessions of
@@ -422,9 +463,6 @@ struct InstanceRow: View {
                 .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
         )
         .onHover { isHovered = $0 }
-        .task {
-            isYabaiAvailable = await WindowFinder.shared.isYabaiAvailable()
-        }
         .task(id: session.cwd) {
             guard !session.cwd.isEmpty else { return }
             let cwd = session.cwd

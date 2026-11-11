@@ -20,6 +20,8 @@ struct TerminalAppRegistry: Sendable {
         "Hyper",
         "Warp",
         "WezTerm",
+        "wezterm-gui",
+        "Paseo",
         "Tabby",
         "Rio",
         "Contour",
@@ -45,6 +47,7 @@ struct TerminalAppRegistry: Sendable {
         "co.zeit.hyper",
         "dev.warp.Warp-Stable",
         "com.github.wez.wezterm",
+        "sh.paseo.desktop",       // Paseo (Electron-based terminal)
         "com.microsoft.VSCode",
         "com.microsoft.VSCodeInsiders",
         "com.todesktop.230313mzl4w4u92",  // Cursor
@@ -52,13 +55,21 @@ struct TerminalAppRegistry: Sendable {
         "dev.zed.Zed"
     ]
 
-    /// Check if an app name or command path is a known terminal
+    /// Check if an app name or command path is a known terminal.
+    ///
+    /// Very short names ("st", "zed", "Rio", …) are matched against the
+    /// executable basename only. A plain `contains` would match unrelated
+    /// paths ("Support", "install", "sized", …) and make process-tree
+    /// resolution stop at a non-terminal ancestor.
     static func isTerminal(_ appNameOrCommand: String) -> Bool {
         let lower = appNameOrCommand.lowercased()
+        let basename = (appNameOrCommand as NSString).lastPathComponent.lowercased()
 
-        // Check if any known app name is contained in the command (case-insensitive)
         for name in appNames {
-            if lower.contains(name.lowercased()) {
+            let candidate = name.lowercased()
+            if candidate.count <= 3 {
+                if basename == candidate { return true }
+            } else if lower.contains(candidate) {
                 return true
             }
         }
