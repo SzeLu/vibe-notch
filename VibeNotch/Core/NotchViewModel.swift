@@ -80,12 +80,15 @@ class NotchViewModel: ObservableObject {
                 height: 580
             )
         case .menu:
-            // Base height covers all static rows (Back, Appearance, 3 picker rows,
-            // 3 toggles, Accessibility, Update, GitHub, Quit + dividers + padding).
-            // Picker expansion deltas added on top when expanded.
+            // Base height hugs the collapsed content (Back, Appearance, 3 picker
+            // rows, 2 toggles, Accessibility, Update, GitHub, Quit + dividers +
+            // padding) within the panel's header + bottom padding. Picker
+            // expansion deltas are added on top when a picker is expanded.
+            // Tuned so there's only a small gap below "Quit" and no scroll in
+            // the collapsed state.
             return CGSize(
                 width: min(screenRect.width * 0.4, 480),
-                height: 584
+                height: 560
                     + screenSelector.expandedPickerHeight
                     + soundSelector.expandedPickerHeight
                     + claudeDirSelector.expandedPickerHeight

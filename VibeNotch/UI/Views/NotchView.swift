@@ -183,11 +183,6 @@ struct NotchView: View {
                             isHovering = hovering
                         }
                     }
-                    .onTapGesture {
-                        if viewModel.status != .opened {
-                            viewModel.notchOpen(reason: .click)
-                        }
-                    }
             }
         }
         .opacity(isVisible ? 1 : 0)
